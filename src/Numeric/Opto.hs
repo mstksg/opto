@@ -1,38 +1,67 @@
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE KindSignatures  #-}
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections   #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE TupleSections          #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeSynonymInstances   #-}
 
 module Numeric.Opto (
   ) where
 
+import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.ST
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Maybe
 import           Data.Foldable
 import           Data.Kind
 import           Data.Primitive
 import           Data.Primitive.MutVar
+import           Data.Proxy
 import           Unsafe.Coerce
 
-data Ref m v a = Ref { rNew    :: !(a -> m v)
-                     , rRead   :: !(v -> m a)
-                     , rModify :: !(v -> (a -> a) -> m ())
-                     }
+class Ref m a v | v -> a where
+    newRef     :: a -> m v
+    readRef    :: v -> m a
+    writeRef   :: v -> a -> m ()
+    modifyRef  :: v -> (a -> a) -> m ()
+    modifyRef' :: v -> (a -> a) -> m ()
+
+instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
+    newRef     = newMutVar
+    readRef    = readMutVar
+    writeRef   = writeMutVar
+    modifyRef  = modifyMutVar
+    modifyRef' = modifyMutVar'
+
+instance Applicative m => Ref m () () where
+    newRef     = \_ -> pure ()
+    readRef    = \_ -> pure ()
+    writeRef   = \_ _ -> pure ()
+    modifyRef  = \_ _ -> pure ()
+    modifyRef' = \_ _ -> pure ()
+
+-- data Ref m v a = Ref { rNew    :: !(a -> m v)
+--                      , rRead   :: !(v -> m a)
+--                      , rModify :: !(v -> (a -> a) -> m ())
+--                      }
 
 data OptoM :: (Type -> Type) -> Type -> Type -> Type where
-    MkOptoM :: { oInit   :: !s
-               , oRefS   :: !(Ref m sVar s)
-               , oRefB   :: !(Ref m bVar b)
+    MkOptoM :: (Ref m s sVar, Ref m b bVar)
+            => { oSVar   :: Proxy sVar
+               , oInit   :: !s
                , oGrad   :: !(a -> b -> m b)
                , oUpdate :: !(sVar -> bVar -> b -> m ())
                }
             -> OptoM m a b
 
 type Opto s = OptoM (ST s)
-
-mutVarRef :: PrimMonad m => Ref m (MutVar (PrimState m) a) a
-mutVarRef = Ref newMutVar readMutVar modifyMutVar'
 
 fromPure
     :: PrimMonad m
@@ -41,9 +70,8 @@ fromPure
     -> (b -> b -> t -> (b, t))  -- ^ gradient, value, state
     -> OptoM m a b
 fromPure s0 grad update =
-    MkOptoM { oInit   = s0
-            , oRefS   = mutVarRef
-            , oRefB   = mutVarRef
+    MkOptoM { oSVar   = Proxy
+            , oInit   = s0
             , oGrad   = \x       -> return . grad x
             , oUpdate = \rS rY g -> do
                 (y', s') <- update g <$> readMutVar rY <*> readMutVar rS
@@ -52,20 +80,12 @@ fromPure s0 grad update =
             }
 
 scanOptoM
-    :: (PrimMonad m, Foldable t)
+    :: (Monad m, Foldable t)
     => t a
     -> b
     -> OptoM m a b
     -> m (b, OptoM m a b)
-scanOptoM xs y0 MkOptoM{..} = do
-    rS <- rNew oRefS oInit
-    rY <- rNew oRefB y0
-    forM_ xs $ \x -> do
-      g <- oGrad x =<< rRead oRefB rY
-      oUpdate rS rY g
-    s' <- rRead oRefS rS
-    let o' = MkOptoM s' oRefS oRefB oGrad oUpdate
-    (, o') <$> rRead oRefB rY
+scanOptoM xs = scanOptoUntilM xs (\_ _ -> pure False)
 
 scanOpto
     :: Foldable t
@@ -73,26 +93,62 @@ scanOpto
     -> b
     -> (forall s. Opto s a b)
     -> (b, Opto s a b)
-scanOpto xs y0 o0 = runST $ do
-    (y', o') <- scanOptoM xs y0 o0
+scanOpto xs = scanOptoUntil xs (\_ _ -> False)
+
+scanOptoUntilM
+    :: (Monad m, Foldable t)
+    => t a
+    -> (b -> b -> m Bool)       -- ^ grad, current
+    -> b
+    -> OptoM m a b
+    -> m (b, OptoM m a b)
+scanOptoUntilM xs stop y0 MkOptoM{..} = do
+    rS <- newRef oInit
+    rY <- newRef y0
+    runMaybeT . forM_ xs $ \x -> do
+      y <- lift $ readRef rY
+      g <- lift $ oGrad x =<< readRef rY
+      guard . not =<< lift (stop g y)
+      lift $ oUpdate rS rY g
+    s' <- readRef rS
+    let o' = MkOptoM Proxy s' oGrad oUpdate
+    (, o') <$> readRef rY
+
+scanOptoUntil
+    :: Foldable t
+    => t a
+    -> (b -> b -> Bool)         -- ^ grad, current
+    -> b
+    -> (forall s. Opto s a b)
+    -> (b, Opto s a b)
+scanOptoUntil xs stop y0 o0 = runST $ do
+    (y', o') <- scanOptoUntilM xs (\g -> pure . stop g) y0 o0
     return (y', unsafeCoerce o')        -- is this safe?  probably.
 
 iterateOptoM
-    :: b
+    :: Monad m
+    => (b -> b -> m Bool)   -- ^ grad, current
+    -> b
     -> OptoM m () b
-    -> m b
-iterateOptoM = undefined
+    -> m (b, OptoM m () b)
+iterateOptoM = scanOptoUntilM (repeat ())
+
+iterateOpto
+    :: (b -> b -> Bool)   -- ^ grad, current
+    -> b
+    -> (forall s. Opto s () b)
+    -> (b, Opto s () b)
+iterateOpto = scanOptoUntil (repeat ())
 
 sgdOptimizerM
-    :: (Fractional b, PrimMonad m)
+    :: (Fractional b, Ref m b v, Applicative m)
     => Double
     -> (a -> b -> m b)
-    -> (MutVar (PrimState m) b -> b -> m ())        -- ^ adding action
+    -> (v -> b -> m ())        -- ^ adding action
     -> OptoM m a b
 sgdOptimizerM r gr upd =
-    MkOptoM { oInit   = ()
-            , oRefS   = mutVarRef
-            , oRefB   = mutVarRef
+    MkOptoM { oSVar   = Proxy @()
+            , oInit   = ()
             , oGrad   = gr
             , oUpdate = \_ rY g -> upd rY (realToFrac r * g)
             }
@@ -104,4 +160,3 @@ sgdOptimizer
     -> OptoM m a b
 sgdOptimizer r gr = sgdOptimizerM r (\x -> return . gr x) $ \rY u ->
     modifyMutVar' rY (+ u)
-
