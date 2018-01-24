@@ -1,13 +1,11 @@
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TupleSections              #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TupleSections             #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE UndecidableInstances      #-}
 
 module Numeric.Opto.Stochastic (
     MonadSample(..)
@@ -26,12 +24,9 @@ import           Data.Default
 import           Data.Primitive.MutVar
 import           Numeric.Opto.Core       (OptoM(..), Step)
 import           Numeric.Opto.Ref
+import           Numeric.Opto.Sample
 import           Numeric.Opto.Step
 import qualified Numeric.Opto.Core       as OC
-
-class MonadPlus m => MonadSample r m | m -> r where
-    sample :: m r
-
 
 fromCopying
     :: (PrimMonad m, ScalingInPlace m v c a, MonadSample r m)
