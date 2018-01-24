@@ -10,6 +10,35 @@
 @version 0.1.0.0
 
 module Numeric.Opto
+class Ref m a v | v -> a
+newRef :: Ref m a v => a -> m v
+readRef :: Ref m a v => v -> m a
+writeRef :: Ref m a v => v -> a -> m ()
+modifyRef :: Ref m a v => v -> (a -> a) -> m ()
+modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+data OptoM :: (Type -> Type) -> Type -> Type -> Type
+[MkOptoM] :: (Ref m s sVar, Ref m b bVar) => {oSVar :: Proxy sVar, oInit :: !s, oGrad :: !(a -> b -> m b), oUpdate :: !(sVar -> bVar -> b -> m ())} -> OptoM m a b
+type Opto s = OptoM (ST s)
+fromCopying :: PrimMonad m => s -> (a -> b -> m b) -> (b -> b -> s -> m (b, s)) -> OptoM m a b
+fromPure :: PrimMonad m => s -> (a -> b -> b) -> (b -> b -> s -> (b, s)) -> OptoM m a b
+scanOptoM :: (Monad m, Foldable t) => t a -> b -> OptoM m a b -> m (b, OptoM m a b)
+scanOpto :: Foldable t => t a -> b -> (forall s'. Opto s' a b) -> (b, Opto s a b)
+scanOptoUntilM :: (Monad m, Foldable t) => t a -> (b -> b -> m Bool) -> b -> OptoM m a b -> m (b, OptoM m a b)
+scanOptoUntil :: Foldable t => t a -> (b -> b -> Bool) -> b -> (forall s'. Opto s' a b) -> (b, Opto s a b)
+iterateOptoM :: Monad m => (b -> b -> m Bool) -> b -> OptoM m () b -> m (b, OptoM m () b)
+iterateOpto :: (b -> b -> Bool) -> b -> (forall s'. Opto s' () b) -> (b, Opto s () b)
+sgdOptimizerM :: (Fractional b, Ref m b v, Applicative m) => Double -> (a -> b -> m b) -> (v -> b -> m ()) -> OptoM m a b
+sgdOptimizer :: (Fractional b, PrimMonad m) => Double -> (a -> b -> b) -> OptoM m a b
+gdOptimizerM :: (Fractional b, Ref m b v, Applicative m) => Double -> (b -> b) -> (v -> b -> m ()) -> OptoM m () b
+gdOptimizer :: (Fractional b, PrimMonad m) => Double -> (b -> b) -> OptoM m () b
+data Adam
+Adam :: Double -> Double -> Double -> Double -> Adam
+[adamStep] :: Adam -> Double
+[adamDecay1] :: Adam -> Double
+[adamDecay2] :: Adam -> Double
+[adamEpsilon] :: Adam -> Double
+adamOptimizerM :: forall a b v m. (Floating b, Ref m b v, PrimMonad m) => Adam -> (a -> b -> m b) -> (v -> b -> m ()) -> OptoM m a b
+adamOptimizer :: (Floating b, PrimMonad m) => Adam -> (a -> b -> b) -> OptoM m a b
 instance GHC.Classes.Eq Numeric.Opto.Adam
 instance GHC.Show.Show Numeric.Opto.Adam
 instance Data.Default.Class.Default Numeric.Opto.Adam
