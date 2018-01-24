@@ -26,6 +26,7 @@ dependencies:
 - data-default
 - vector-sized
 - vector
+- profunctors
 
 library:
   source-dirs: src
