@@ -29,7 +29,17 @@ class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
 data SampleRefT v r m a
 runSampleRefT :: SampleRefT v r m a -> v -> m (Maybe a)
+foldSampleRefT :: (Ref m [r] v, Foldable t) => SampleRefT v r m a -> t r -> m (Maybe a, [r])
 sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
+data SampleFoldT r m a
+foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
+sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Numeric.Opto.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Numeric.Opto.Sample.SampleFoldT r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Numeric.Opto.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Numeric.Opto.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Numeric.Opto.Sample.SampleFoldT r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Numeric.Opto.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Numeric.Opto.Sample.SampleRefT v r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Numeric.Opto.Sample.SampleRefT v r m)
 instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Numeric.Opto.Sample.SampleRefT v r m)
