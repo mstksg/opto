@@ -151,8 +151,8 @@ iterateOpto = scanOptoUntil (repeat ())
 sgdOptimizerM
     :: (Fractional b, Ref m b v, Applicative m)
     => Double
-    -> (a -> b -> m b)
-    -> (v -> b -> m ())        -- ^ adding action
+    -> (a -> b -> m b)          -- ^ gradient
+    -> (v -> b -> m ())         -- ^ adding action
     -> OptoM m a b
 sgdOptimizerM r gr upd =
     MkOptoM { oSVar   = Proxy @()
@@ -168,6 +168,21 @@ sgdOptimizer
     -> OptoM m a b
 sgdOptimizer r gr = sgdOptimizerM r (\x -> return . gr x) $ \rY u ->
     modifyMutVar' rY (+ u)
+
+gdOptimizerM
+    :: (Fractional b, Ref m b v, Applicative m)
+    => Double
+    -> (b -> b)             -- ^ gradient
+    -> (v -> b -> m ())     -- ^ adding action
+    -> OptoM m () b
+gdOptimizerM r gr upd = sgdOptimizerM r (const (pure . gr)) upd
+
+gdOptimizer
+    :: (Fractional b, PrimMonad m)
+    => Double
+    -> (b -> b)             -- ^ gradient
+    -> OptoM m () b
+gdOptimizer r gr = sgdOptimizer r (const gr)
 
 data Adam = Adam
     { adamStep    :: Double
