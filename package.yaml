@@ -27,6 +27,8 @@ dependencies:
 
 library:
   source-dirs: src
+  ghc-options:
+  - -Wall
 
 # executables:
 #   opto-exe:

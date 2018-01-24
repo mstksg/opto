@@ -13,6 +13,15 @@
 {-# LANGUAGE TypeSynonymInstances   #-}
 
 module Numeric.Opto (
+    Ref(..)
+  , OptoM(..), Opto
+  , fromCopying, fromPure
+  , scanOptoM, scanOpto
+  , scanOptoUntilM, scanOptoUntil
+  , iterateOptoM, iterateOpto
+  , sgdOptimizerM, sgdOptimizer
+  , gdOptimizerM, gdOptimizer
+  , Adam(..), adamOptimizerM, adamOptimizer
   ) where
 
 import           Control.Monad
@@ -21,9 +30,9 @@ import           Control.Monad.ST
 import           Control.Monad.Trans.Class
 import           Data.Default
 import           Control.Monad.Trans.Maybe
-import           Data.Foldable
+-- import           Data.Foldable
 import           Data.Kind
-import           Data.Primitive
+-- import           Data.Primitive
 import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Unsafe.Coerce
@@ -99,7 +108,7 @@ scanOpto
     :: Foldable t
     => t a
     -> b
-    -> (forall s. Opto s a b)
+    -> (forall s'. Opto s' a b)
     -> (b, Opto s a b)
 scanOpto xs = scanOptoUntil xs (\_ _ -> False)
 
@@ -113,7 +122,7 @@ scanOptoUntilM
 scanOptoUntilM xs stop y0 MkOptoM{..} = do
     rS <- newRef oInit
     rY <- newRef y0
-    runMaybeT . forM_ xs $ \x -> do
+    _ <- runMaybeT . forM_ xs $ \x -> do
       y <- lift $ readRef rY
       g <- lift $ oGrad x =<< readRef rY
       guard . not =<< lift (stop g y)
@@ -127,7 +136,7 @@ scanOptoUntil
     => t a
     -> (b -> b -> Bool)         -- ^ grad, current
     -> b
-    -> (forall s. Opto s a b)
+    -> (forall s'. Opto s' a b)
     -> (b, Opto s a b)
 scanOptoUntil xs stop y0 o0 = runST $ do
     (y', o') <- scanOptoUntilM xs (\g -> pure . stop g) y0 o0
@@ -144,7 +153,7 @@ iterateOptoM = scanOptoUntilM (repeat ())
 iterateOpto
     :: (b -> b -> Bool)   -- ^ grad, current
     -> b
-    -> (forall s. Opto s () b)
+    -> (forall s'. Opto s' () b)
     -> (b, Opto s () b)
 iterateOpto = scanOptoUntil (repeat ())
 
@@ -213,17 +222,18 @@ adamOptimizerM Adam{..} gr upd =
                 (t, m0, v0) <- readRef rS
                 let m1 = realToFrac adamDecay1 * m0
                        + realToFrac (1 - adamDecay1) * g
-                    v1 = realToFrac adamDecay2 * m0
+                    v1 = realToFrac adamDecay2 * v0
                        + realToFrac (1 - adamDecay2) * g
                     mHat = m1 / (1 - realToFrac (adamDecay1 ** t))
                     vHat = v1 / (1 - realToFrac (adamDecay2 ** t))
+                writeRef rS (t + 1, m1, v1)
                 upd rB $ realToFrac (- adamStep)
                          * mHat
                          / (sqrt vHat + realToFrac adamEpsilon)
             }
 
 adamOptimizer
-    :: forall a b v m. (Floating b, PrimMonad m)
+    :: (Floating b, PrimMonad m)
     => Adam
     -> (a -> b -> b)          -- ^ gradient
     -> OptoM m a b
