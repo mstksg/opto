@@ -19,7 +19,7 @@ module Numeric.Opto (
     Ref(..)
   , Additive(..), Scaling(..)
   , AdditiveInPlace(..), ScalingInPlace(..)
-  , OptoM(..), Opto
+  , Step, OptoM(..), Opto
   , fromCopying, fromPure
   , scanOptoM, scanOpto
   , scanOptoUntilM, scanOptoUntil
@@ -150,10 +150,12 @@ instance (PrimMonad m, PrimState m ~ s, Num a) => ScalingInPlace m (MV.MVector s
     r .*= c = forM_ [0 .. MV.length r - 1] $ \i ->
       MV.modify r (c *) i
 
+type Step a = a
+
 data OptoM :: (Type -> Type) -> Type -> Type -> Type -> Type where
     MkOptoM :: (Ref m s sVar, ScalingInPlace m v c a)
             => { oInit   :: !s
-               , oUpdate :: !(sVar -> r -> a -> m (c, a))
+               , oUpdate :: !(sVar -> r -> a -> m (c, Step a))
                }
             -> OptoM m v r a
 
@@ -162,7 +164,7 @@ type Opto s = OptoM (ST s)
 fromCopying
     :: (PrimMonad m, ScalingInPlace m v c a)
     => s
-    -> (r -> a -> s -> m (c, a, s))
+    -> (r -> a -> s -> m (c, Step a, s))
     -> OptoM m v r a
 fromCopying s0 update =
     MkOptoM { oInit   = s0
@@ -175,14 +177,14 @@ fromCopying s0 update =
 fromPure
     :: (PrimMonad m, ScalingInPlace m v c a)
     => s
-    -> (r -> a -> s -> (c, a, s))
+    -> (r -> a -> s -> (c, Step a, s))
     -> OptoM m v r a
 fromPure s0 update = fromCopying s0 (\r x -> pure . update r x)
 
 scanOptoUntilM
     :: forall m v r a t. (Monad m, Foldable t)
     => t r
-    -> (a -> a -> m Bool)       -- ^ step, current
+    -> (Step a -> a -> m Bool)       -- ^ step, current
     -> a
     -> OptoM m v r a
     -> m (a, OptoM m v r a)
@@ -203,7 +205,7 @@ scanOptoUntilM rs stop x0 MkOptoM{..} = do
 scanOptoUntil
     :: Foldable t
     => t r
-    -> (a -> a -> Bool)         -- ^ step, current
+    -> (Step a -> a -> Bool)         -- ^ step, current
     -> a
     -> (forall s'. Opto s' v r a)
     -> (a, Opto s v r a)
@@ -229,14 +231,14 @@ scanOpto xs = scanOptoUntil xs (\_ _ -> False)
 
 iterateOptoM
     :: Monad m
-    => (a -> a -> m Bool)   -- ^ step, current
+    => (Step a -> a -> m Bool)   -- ^ step, current
     -> a
     -> OptoM m v () a
     -> m (a, OptoM m v () a)
 iterateOptoM = scanOptoUntilM (repeat ())
 
 iterateOpto
-    :: (a -> a -> Bool)   -- ^ step, current
+    :: (Step a -> a -> Bool)   -- ^ step, current
     -> a
     -> (forall s'. Opto s' v () a)
     -> (a, Opto s v () a)
