@@ -31,17 +31,18 @@ class (Ref m a v, Additive a) => AdditiveInPlace m v a
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*=) :: ScalingInPlace m v c a => v -> c -> m ()
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
+type Step a = a
 data OptoM :: (Type -> Type) -> Type -> Type -> Type -> Type
-[MkOptoM] :: (Ref m s sVar, ScalingInPlace m v c a) => {oInit :: !s, oUpdate :: !(sVar -> r -> a -> m (c, a))} -> OptoM m v r a
+[MkOptoM] :: (Ref m s sVar, ScalingInPlace m v c a) => {oInit :: !s, oUpdate :: !(sVar -> r -> a -> m (c, Step a))} -> OptoM m v r a
 type Opto s = OptoM (ST s)
-fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> m (c, a, s)) -> OptoM m v r a
-fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> (c, a, s)) -> OptoM m v r a
+fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> m (c, Step a, s)) -> OptoM m v r a
+fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> (c, Step a, s)) -> OptoM m v r a
 scanOptoM :: (Monad m, Foldable t) => t r -> a -> OptoM m v r a -> m (a, OptoM m v r a)
 scanOpto :: Foldable t => t r -> a -> (forall s'. Opto s' v r a) -> (a, Opto s v r a)
-scanOptoUntilM :: forall m v r a t. (Monad m, Foldable t) => t r -> (a -> a -> m Bool) -> a -> OptoM m v r a -> m (a, OptoM m v r a)
-scanOptoUntil :: Foldable t => t r -> (a -> a -> Bool) -> a -> (forall s'. Opto s' v r a) -> (a, Opto s v r a)
-iterateOptoM :: Monad m => (a -> a -> m Bool) -> a -> OptoM m v () a -> m (a, OptoM m v () a)
-iterateOpto :: (a -> a -> Bool) -> a -> (forall s'. Opto s' v () a) -> (a, Opto s v () a)
+scanOptoUntilM :: forall m v r a t. (Monad m, Foldable t) => t r -> (Step a -> a -> m Bool) -> a -> OptoM m v r a -> m (a, OptoM m v r a)
+scanOptoUntil :: Foldable t => t r -> (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v r a) -> (a, Opto s v r a)
+iterateOptoM :: Monad m => (Step a -> a -> m Bool) -> a -> OptoM m v () a -> m (a, OptoM m v () a)
+iterateOpto :: (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v () a) -> (a, Opto s v () a)
 sgdOptimizerM :: (Ref m a v, ScalingInPlace m v c a, Applicative m) => c -> (r -> a -> m a) -> OptoM m v r a
 sgdOptimizer :: (Ref m a v, ScalingInPlace m v c a, Applicative m) => c -> (r -> a -> a) -> OptoM m v r a
 gdOptimizerM :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> m a) -> OptoM m v () a
