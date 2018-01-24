@@ -9,13 +9,69 @@
 @package opto
 @version 0.1.0.0
 
-module Numeric.Opto
-class Ref m a v | v -> a
+module Numeric.Opto.Ref
+class Monad m => Ref m a v | v -> a
 newRef :: Ref m a v => a -> m v
 readRef :: Ref m a v => v -> m a
 writeRef :: Ref m a v => v -> a -> m ()
 modifyRef :: Ref m a v => v -> (a -> a) -> m ()
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
+updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
+data EmptyRef
+EmptyRef :: EmptyRef
+instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m Numeric.Opto.Ref.EmptyRef Numeric.Opto.Ref.EmptyRef
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
+
+module Numeric.Opto.Sample
+class MonadPlus m => MonadSample r m | m -> r
+sample :: MonadSample r m => m r
+data SampleRefT v r m a
+runSampleRefT :: SampleRefT v r m a -> v -> m (Maybe a)
+sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Numeric.Opto.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Numeric.Opto.Sample.SampleRefT v r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Numeric.Opto.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Numeric.Opto.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Numeric.Opto.Sample.SampleRefT v r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Numeric.Opto.Sample.SampleRefT v r m)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Numeric.Opto.Sample.MonadSample r (Numeric.Opto.Sample.SampleRefT v r m)
+
+module Numeric.Opto.Step
+class Additive a
+(.+.) :: Additive a => a -> a -> a
+addZero :: Additive a => a
+(.+.) :: (Additive a, Num a) => a -> a -> a
+addZero :: (Additive a, Num a) => a
+class (Num c, Additive a) => Scaling c a | a -> c
+(.*) :: Scaling c a => c -> a -> a
+scaleOne :: Scaling c a => c
+(.*) :: (Scaling c a, Num a, c ~ a) => c -> a -> a
+scaleOne :: (Scaling c a, Num c) => c
+class (Ref m a v, Additive a) => AdditiveInPlace m v a
+(.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
+class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
+(.*=) :: ScalingInPlace m v c a => v -> c -> m ()
+(.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
+instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Step.ScalingInPlace m v GHC.Types.Double GHC.Types.Double
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.Step.ScalingInPlace m (Data.Vector.Mutable.MVector s a) a (Data.Vector.Vector a)
+instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Step.AdditiveInPlace m v GHC.Types.Double
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.Step.AdditiveInPlace m (Data.Vector.Mutable.MVector s a) (Data.Vector.Vector a)
+instance Numeric.Opto.Step.Scaling GHC.Types.Double GHC.Types.Double
+instance GHC.Num.Num a => Numeric.Opto.Step.Scaling a (Data.Vector.Vector a)
+instance Numeric.Opto.Step.Additive GHC.Types.Double
+instance GHC.Num.Num a => Numeric.Opto.Step.Additive (Data.Vector.Vector a)
+
+module Numeric.Opto.Core
+class Monad m => Ref m a v | v -> a
+newRef :: Ref m a v => a -> m v
+readRef :: Ref m a v => v -> m a
+writeRef :: Ref m a v => v -> a -> m ()
+modifyRef :: Ref m a v => v -> (a -> a) -> m ()
+modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
+updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
 class Additive a
 (.+.) :: Additive a => a -> a -> a
 addZero :: Additive a => a
@@ -32,40 +88,27 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*=) :: ScalingInPlace m v c a => v -> c -> m ()
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
 type Step a = a
-data OptoM :: (Type -> Type) -> Type -> Type -> Type -> Type
-[MkOptoM] :: (Ref m s sVar, ScalingInPlace m v c a) => {oInit :: !s, oUpdate :: !(sVar -> r -> a -> m (c, Step a))} -> OptoM m v r a
+data OptoM :: (Type -> Type) -> Type -> Type -> Type
+[MkOptoM] :: (Ref m s sVar, ScalingInPlace m v c a) => {oInit :: !s, oUpdate :: !(sVar -> a -> m (c, Step a))} -> OptoM m v a
 type Opto s = OptoM (ST s)
-fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> m (c, Step a, s)) -> OptoM m v r a
-fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> (c, Step a, s)) -> OptoM m v r a
-scanOptoM :: (Monad m, Foldable t) => t r -> a -> OptoM m v r a -> m (a, OptoM m v r a)
-scanOpto :: Foldable t => t r -> a -> (forall s'. Opto s' v r a) -> (a, Opto s v r a)
-scanOptoUntilM :: forall m v r a t. (Monad m, Foldable t) => t r -> (Step a -> a -> m Bool) -> a -> OptoM m v r a -> m (a, OptoM m v r a)
-scanOptoUntil :: Foldable t => t r -> (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v r a) -> (a, Opto s v r a)
-iterateOptoM :: Monad m => (Step a -> a -> m Bool) -> a -> OptoM m v () a -> m (a, OptoM m v () a)
-iterateOpto :: (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v () a) -> (a, Opto s v () a)
-sgdOptimizerM :: (Ref m a v, ScalingInPlace m v c a, Applicative m) => c -> (r -> a -> m a) -> OptoM m v r a
-sgdOptimizer :: (Ref m a v, ScalingInPlace m v c a, Applicative m) => c -> (r -> a -> a) -> OptoM m v r a
-gdOptimizerM :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> m a) -> OptoM m v () a
-gdOptimizer :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> a) -> OptoM m v () a
-data Adam c
-Adam :: !c -> !c -> !c -> !c -> Adam c
-[adamStep] :: Adam c -> !c
-[adamDecay1] :: Adam c -> !c
-[adamDecay2] :: Adam c -> !c
-[adamEpsilon] :: Adam c -> !c
-adamOptimizerM :: forall m v r a c. (RealFloat c, Floating a, ScalingInPlace m v c a, PrimMonad m) => Adam c -> (r -> a -> m a) -> OptoM m v r a
-adamOptimizer :: (RealFloat c, Floating a, ScalingInPlace m v c a, PrimMonad m) => Adam c -> (r -> a -> a) -> OptoM m v r a
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Adam c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Adam c)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Adam a)
-instance GHC.Base.Applicative m => Numeric.Opto.Ref m Numeric.Opto.EmptyRef Numeric.Opto.EmptyRef
-instance Numeric.Opto.Ref m GHC.Types.Double v => Numeric.Opto.ScalingInPlace m v GHC.Types.Double GHC.Types.Double
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.ScalingInPlace m (Data.Vector.Mutable.MVector s a) a (Data.Vector.Vector a)
-instance Numeric.Opto.Ref m GHC.Types.Double v => Numeric.Opto.AdditiveInPlace m v GHC.Types.Double
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.AdditiveInPlace m (Data.Vector.Mutable.MVector s a) (Data.Vector.Vector a)
-instance Numeric.Opto.Scaling GHC.Types.Double GHC.Types.Double
-instance GHC.Num.Num a => Numeric.Opto.Scaling a (Data.Vector.Vector a)
-instance Numeric.Opto.Additive GHC.Types.Double
-instance GHC.Num.Num a => Numeric.Opto.Additive (Data.Vector.Vector a)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref m a (Data.Primitive.MutVar.MutVar s a)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
+fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> m (c, Step a, s)) -> OptoM m v a
+fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> (c, Step a, s)) -> OptoM m v a
+iterateOptoM :: forall m v a. Monad m => (Step a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
+iterateOpto :: (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v a) -> (a, Opto s v a)
+steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> a) -> OptoM m v a
+steepestDescentM :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> m a) -> OptoM m v a
+
+module Numeric.Opto.Stochastic
+class MonadPlus m => MonadSample r m | m -> r
+sample :: MonadSample r m => m r
+fromCopying :: (PrimMonad m, ScalingInPlace m v c a, MonadSample r m) => s -> (r -> a -> s -> m (c, Step a, s)) -> OptoM m v a
+fromPure :: (PrimMonad m, ScalingInPlace m v c a, MonadSample r m) => s -> (r -> a -> s -> (c, Step a, s)) -> OptoM m v a
+iterateStochUntilM :: forall m v r a. (MonadSample r m) => (Step a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
+iterateStochM :: MonadSample r m => a -> OptoM m v a -> m (a, OptoM m v a)
+sgdM :: (ScalingInPlace m v c a, MonadSample r m) => c -> (r -> a -> m a) -> OptoM m v a
+sgd :: (ScalingInPlace m v c a, MonadSample r m) => c -> (r -> a -> a) -> OptoM m v a
+adam :: forall m r v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => Adam c -> (r -> a -> a) -> OptoM m v a
+adamM :: forall m r v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => Adam c -> (r -> a -> m a) -> OptoM m v a
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Stochastic.Adam c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Stochastic.Adam c)
+instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Stochastic.Adam a)
