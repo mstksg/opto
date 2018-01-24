@@ -103,6 +103,8 @@ data OptoM :: (Type -> Type) -> Type -> Type -> Type
 type Opto s = OptoM (ST s)
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> m (c, Step a, s)) -> OptoM m v a
 fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> (c, Step a, s)) -> OptoM m v a
+fromStateless :: ScalingInPlace m v c a => (a -> (c, Step a)) -> OptoM m v a
+fromStatelessM :: ScalingInPlace m v c a => (a -> m (c, Step a)) -> OptoM m v a
 iterateOptoM :: forall m v a. Monad m => (Step a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
 iterateOpto :: (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v a) -> (a, Opto s v a)
 steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> a) -> OptoM m v a
