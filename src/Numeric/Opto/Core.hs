@@ -12,7 +12,7 @@ module Numeric.Opto.Core (
   , Additive(..), Scaling(..)
   , AdditiveInPlace(..), ScalingInPlace(..)
   , Step, OptoM(..), Opto
-  , fromCopying, fromPure
+  , fromCopying, fromPure, fromStateless, fromStatelessM
   , iterateOptoM, iterateOpto
   , steepestDescent, steepestDescentM
   ) where
@@ -60,6 +60,14 @@ fromPure
     -> OptoM m v a
 fromPure s0 update = fromCopying s0 (\x -> pure . update x)
 
+fromStatelessM :: ScalingInPlace m v c a => (a -> m (c, Step a)) -> OptoM m v a
+fromStatelessM update = MkOptoM { oInit = EmptyRef
+                                , oUpdate = \case ~EmptyRef -> update
+                                }
+
+fromStateless :: ScalingInPlace m v c a => (a -> (c, Step a)) -> OptoM m v a
+fromStateless update = fromStatelessM (pure . update)
+
 iterateOptoM
     :: forall m v a. Monad m
     => (Step a -> a -> m Bool)   -- ^ step, current
@@ -94,10 +102,7 @@ steepestDescentM
     => c
     -> (a -> m a)           -- ^ gradient
     -> OptoM m v a
-steepestDescentM lr gr =
-    MkOptoM { oInit = EmptyRef
-            , oUpdate = \case ~EmptyRef -> fmap (-lr,) . gr
-            }
+steepestDescentM lr gr = fromStatelessM $ fmap (-lr,) . gr
 
 steepestDescent
     :: (ScalingInPlace m v c a, Applicative m)
