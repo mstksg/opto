@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
@@ -18,6 +19,7 @@ import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.ST
 import           Control.Monad.Trans.Class
+import           Data.Default
 import           Control.Monad.Trans.Maybe
 import           Data.Foldable
 import           Data.Kind
@@ -47,11 +49,6 @@ instance Applicative m => Ref m () () where
     modifyRef  = \_ _ -> pure ()
     modifyRef' = \_ _ -> pure ()
 
--- data Ref m v a = Ref { rNew    :: !(a -> m v)
---                      , rRead   :: !(v -> m a)
---                      , rModify :: !(v -> (a -> a) -> m ())
---                      }
-
 data OptoM :: (Type -> Type) -> Type -> Type -> Type where
     MkOptoM :: (Ref m s sVar, Ref m b bVar)
             => { oSVar   :: Proxy sVar
@@ -63,21 +60,32 @@ data OptoM :: (Type -> Type) -> Type -> Type -> Type where
 
 type Opto s = OptoM (ST s)
 
-fromPure
+fromCopying
     :: PrimMonad m
-    => t
-    -> (a -> b -> b)
-    -> (b -> b -> t -> (b, t))  -- ^ gradient, value, state
+    => s
+    -> (a -> b -> m b)
+    -> (b -> b -> s -> m (b, s))  -- ^ gradient, value, state
     -> OptoM m a b
-fromPure s0 grad update =
+fromCopying s0 grad update =
     MkOptoM { oSVar   = Proxy
             , oInit   = s0
-            , oGrad   = \x       -> return . grad x
+            , oGrad   = grad
             , oUpdate = \rS rY g -> do
-                (y', s') <- update g <$> readMutVar rY <*> readMutVar rS
+                y <- readMutVar rY
+                s <- readMutVar rS
+                (y', s') <- update g y s
                 writeMutVar rS s'
                 writeMutVar rY y'
             }
+
+fromPure
+    :: PrimMonad m
+    => s
+    -> (a -> b -> b)
+    -> (b -> b -> s -> (b, s))  -- ^ gradient, value, state
+    -> OptoM m a b
+fromPure s0 grad update = fromCopying s0 (\x   -> return . grad x)
+                                         (\g y -> return . update g y)
 
 scanOptoM
     :: (Monad m, Foldable t)
@@ -150,7 +158,7 @@ sgdOptimizerM r gr upd =
     MkOptoM { oSVar   = Proxy @()
             , oInit   = ()
             , oGrad   = gr
-            , oUpdate = \_ rY g -> upd rY (realToFrac r * g)
+            , oUpdate = \_ rY g -> upd rY (realToFrac (- r) * g)
             }
 
 sgdOptimizer
@@ -159,4 +167,50 @@ sgdOptimizer
     -> (a -> b -> b)
     -> OptoM m a b
 sgdOptimizer r gr = sgdOptimizerM r (\x -> return . gr x) $ \rY u ->
+    modifyMutVar' rY (+ u)
+
+data Adam = Adam
+    { adamStep    :: Double
+    , adamDecay1  :: Double
+    , adamDecay2  :: Double
+    , adamEpsilon :: Double
+    }
+  deriving (Show, Eq)
+
+instance Default Adam where
+    def = Adam { adamStep    = 0.001
+               , adamDecay1  = 0.9
+               , adamDecay2  = 0.999
+               , adamEpsilon = 1e-8
+               }
+
+adamOptimizerM
+    :: forall a b v m. (Floating b, Ref m b v, PrimMonad m)
+    => Adam
+    -> (a -> b -> m b)          -- ^ gradient
+    -> (v -> b -> m ())         -- ^ adding
+    -> OptoM m a b
+adamOptimizerM Adam{..} gr upd = 
+    MkOptoM { oSVar   = Proxy @(MutVar (PrimState m) (Double, b, b))
+            , oInit   = (1,0,0)
+            , oGrad   = gr
+            , oUpdate = \rS rB g -> do
+                (t, m0, v0) <- readRef rS
+                let m1 = realToFrac adamDecay1 * m0
+                       + realToFrac (1 - adamDecay1) * g
+                    v1 = realToFrac adamDecay2 * m0
+                       + realToFrac (1 - adamDecay2) * g
+                    mHat = m1 / (1 - realToFrac (adamDecay1 ** t))
+                    vHat = v1 / (1 - realToFrac (adamDecay2 ** t))
+                upd rB $ realToFrac (- adamStep)
+                         * mHat
+                         / (sqrt vHat + realToFrac adamEpsilon)
+            }
+
+adamOptimizer
+    :: forall a b v m. (Floating b, PrimMonad m)
+    => Adam
+    -> (a -> b -> b)          -- ^ gradient
+    -> OptoM m a b
+adamOptimizer a gr = adamOptimizerM a (\x -> return . gr x) $ \rY u ->
     modifyMutVar' rY (+ u)
