@@ -24,6 +24,8 @@ dependencies:
 - primitive
 - transformers
 - data-default
+- vector-sized
+- vector
 
 library:
   source-dirs: src
