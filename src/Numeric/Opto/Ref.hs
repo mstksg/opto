@@ -1,18 +1,23 @@
-{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE TupleSections          #-}
-{-# LANGUAGE TypeFamilies           #-}
 
 module Numeric.Opto.Ref (
     Ref(..)
+  , RefInit(..), RefVar, initRefs, readRefs
   , EmptyRef(..)
   ) where
 
 import           Control.Monad.Primitive
 import           Data.Functor
+import           Data.Kind
 import           Data.Primitive.MutVar
+import           Data.Type.Combinator
+import           Data.Type.Product
+import           Data.Type.ZipProd
 import qualified Data.Vector             as V
 import qualified Data.Vector.Mutable     as MV
 
@@ -28,9 +33,19 @@ class Monad m => Ref m a v | v -> a where
     modifyRef' v f = void $ updateRef' v ((,()) . f)
     updateRef  :: v -> (a -> (a, b)) -> m b
     updateRef' :: v -> (a -> (a, b)) -> m b
-
     {-# MINIMAL newRef, updateRef, updateRef' #-}
 
+data RefInit :: (Type -> Type) -> Type -> Type -> Type where
+    RI :: Ref m a v => a -> RefInit m a v
+
+data RefVar :: (Type -> Type) -> Type -> Type -> Type where
+    RV :: Ref m a v => v -> RefVar m a v
+
+initRefs :: Applicative m => ZipProd (RefInit m) as vs -> m (ZipProd (RefVar m) as vs)
+initRefs = traverseZP $ \(RI i) -> RV <$> newRef i
+
+readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
+readRefs = traverseZP1 $ \(RV v) -> I <$> readRef v
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
     newRef     = newMutVar

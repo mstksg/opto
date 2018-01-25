@@ -42,10 +42,23 @@ class (Num c, Additive a) => Scaling c a | a -> c where
     scaleOne = 1
 
 class Scaling c a => Metric c a where
+    infixl 7 <.>
+    (<.>)    :: a -> a -> c
     norm_inf :: a -> c
     norm_0   :: a -> c
     norm_1   :: a -> c
     norm_2   :: a -> c
+
+    default (<.>) :: (Num a, c ~ a) => a -> a -> c
+    (<.>) = (*)
+    default norm_inf :: (Num a, c ~ a) => a -> c
+    norm_inf = abs
+    default norm_0 :: (Num a, c ~ a) => a -> c
+    norm_0 = abs
+    default norm_1 :: (Num a, c ~ a) => a -> c
+    norm_1 = abs
+    default norm_2 :: (Num a, c ~ a) => a -> c
+    norm_2 = abs
 
 class (Ref m a v, Additive a) => AdditiveInPlace m v a where
     infix 4 .+.=
@@ -62,6 +75,7 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a where
 
 instance Additive Double
 instance Scaling Double Double
+instance Metric Double Double
 instance Ref m Double v => AdditiveInPlace m v Double
 instance Ref m Double v => ScalingInPlace m v Double Double
 
@@ -72,6 +86,13 @@ instance Num a => Additive (V.Vector a) where
 instance Num a => Scaling a (V.Vector a) where
     c .* xs  = (c *) <$> xs
     scaleOne = 1
+
+instance (Num a, Ord a) => Metric a (V.Vector a) where
+    xs <.> ys = V.sum $ V.zipWith (*) xs ys
+    norm_inf  = V.maximum . V.map abs
+    norm_0    = fromIntegral . V.length
+    norm_1    = V.sum . V.map abs
+    norm_2    = V.sum . V.map (^ (2 :: Int))
 
 instance (PrimMonad m, PrimState m ~ s, Num a) => AdditiveInPlace m (MV.MVector s a) (V.Vector a) where
     r .+.= xs = flip V.imapM_ xs $ \i x ->

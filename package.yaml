@@ -27,6 +27,7 @@ dependencies:
 - vector-sized
 - vector
 - profunctors
+- type-combinators
 
 library:
   source-dirs: src
