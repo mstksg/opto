@@ -15,6 +15,7 @@ module Numeric.Opto.Stochastic (
   , iterateStochM
   , sgdM, sgd
   , adam, adamM
+  , adaMax, adaMaxM
   ) where
 
 import           Control.Applicative
@@ -130,12 +131,13 @@ adamM Adam{..} gr =
     MkOptoM { oInit   = (scaleOne @_ @a, addZero @a, addZero @a)
             , oUpdate = \rS x -> sample >>= \r -> do
                 g <- gr r x
-                (t, m0, v0) <- readMutVar rS
-                let m1 = adamDecay1 .* m0 .+. (1 - adamDecay1) .* g
+                (t0, m0, v0) <- readMutVar rS
+                let t1 = t0 + 1
+                    m1 = adamDecay1 .* m0 .+. (1 - adamDecay1) .* g
                     v1 = adamDecay2 .* v0 .+. (1 - adamDecay2) .* g
-                    mHat = recip (1 - adamDecay1 ** t) .* m1
-                    vHat = recip (1 - adamDecay2 ** t) .* v1
-                writeMutVar rS (t + 1, m1, v1)
+                    mHat = recip (1 - adamDecay1 ** t1) .* m1
+                    vHat = recip (1 - adamDecay2 ** t1) .* v1
+                writeMutVar rS (t1, m1, v1)
                 return ( -adamStep
                        , mHat / (sqrt vHat + realToFrac adamEpsilon)
                        )
@@ -153,3 +155,59 @@ adam
     -> (r -> a -> a)          -- ^ gradient
     -> OptoM m v a
 adam a gr = adamM a (\x -> pure . gr x)
+
+
+data AdaMax c = AdaMax
+    { adaMaxStep    :: !c
+    , adaMaxDecay1  :: !c
+    , adaMaxDecay2  :: !c
+    , adaMaxEpsilon :: !c
+    }
+  deriving (Show, Eq)
+
+instance Fractional a => Default (AdaMax a) where
+    def = AdaMax { adaMaxStep    = 0.002
+                 , adaMaxDecay1  = 0.9
+                 , adaMaxDecay2  = 0.999
+                 , adaMaxEpsilon = 1e-8
+                 }
+
+adaMaxM
+    :: forall m r v a c.
+     ( RealFloat c
+     , Floating a
+     , Metric c a
+     , ScalingInPlace m v c a
+     , MonadSample r m
+     , PrimMonad m
+     )
+    => AdaMax c
+    -> (r -> a -> m a)          -- ^ gradient
+    -> OptoM m v a
+adaMaxM AdaMax{..} gr =
+    MkOptoM { oInit   = (scaleOne @_ @a, addZero @a, 0 :: c)
+            , oUpdate = \rS x -> sample >>= \r -> do
+                g <- gr r x
+                (t0, m0, u0) <- readMutVar rS
+                let t1 = t0 + 1
+                    m1 = adaMaxDecay1 .* m0 .+. (1 - adaMaxDecay1) .* g
+                    u1 = max (adaMaxDecay2 * u0) (norm_inf g)
+                writeMutVar rS (t1, m1, u1)
+                return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t1) * u1)
+                       , m1
+                       )
+            }
+
+adaMax
+    :: forall m r v a c.
+     ( RealFloat c
+     , Floating a
+     , Metric c a
+     , ScalingInPlace m v c a
+     , MonadSample r m
+     , PrimMonad m
+     )
+    => AdaMax c
+    -> (r -> a -> a)          -- ^ gradient
+    -> OptoM m v a
+adaMax a gr = adaMaxM a (\x -> pure . gr x)

@@ -10,6 +10,7 @@
 module Numeric.Opto.Step (
     Additive(..)
   , Scaling(..)
+  , Metric(..)
   , AdditiveInPlace(..)
   , ScalingInPlace(..)
   ) where
@@ -39,6 +40,12 @@ class (Num c, Additive a) => Scaling c a | a -> c where
     (.*) = (*)
     default scaleOne :: Num c => c
     scaleOne = 1
+
+class Scaling c a => Metric c a where
+    norm_inf :: a -> c
+    norm_0   :: a -> c
+    norm_1   :: a -> c
+    norm_2   :: a -> c
 
 class (Ref m a v, Additive a) => AdditiveInPlace m v a where
     infix 4 .+.=
