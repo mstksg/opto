@@ -60,12 +60,19 @@ fromPure
     -> OptoM m v a
 fromPure s0 update = fromCopying s0 (\x -> pure . update x)
 
-fromStatelessM :: ScalingInPlace m v c a => (a -> m (c, Step a)) -> OptoM m v a
-fromStatelessM update = MkOptoM { oInit = EmptyRef
-                                , oUpdate = \case ~EmptyRef -> update
-                                }
+fromStatelessM
+    :: ScalingInPlace m v c a
+    => (a -> m (c, Step a))
+    -> OptoM m v a
+fromStatelessM update =
+    MkOptoM { oInit = EmptyRef
+            , oUpdate = \case ~EmptyRef -> update
+            }
 
-fromStateless :: ScalingInPlace m v c a => (a -> (c, Step a)) -> OptoM m v a
+fromStateless
+    :: ScalingInPlace m v c a
+    => (a -> (c, Step a))
+    -> OptoM m v a
 fromStateless update = fromStatelessM (pure . update)
 
 iterateOptoM

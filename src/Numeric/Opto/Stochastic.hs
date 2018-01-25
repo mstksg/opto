@@ -9,8 +9,8 @@
 
 module Numeric.Opto.Stochastic (
     MonadSample(..)
-  , fromCopying
-  , fromPure
+  , fromCopying, fromPure
+  , fromStateless, fromStatelessM
   , iterateStochUntilM
   , iterateStochM
   , sgdM, sgd
@@ -44,6 +44,23 @@ fromPure
     -> OptoM m v a
 fromPure s0 update = fromCopying s0 (\r x -> pure . update r x)
 
+fromStatelessM
+    :: (ScalingInPlace m v c a, MonadSample r m)
+    => (r -> a -> m (c, Step a))
+    -> OptoM m v a
+fromStatelessM update =
+    MkOptoM { oInit = EmptyRef
+            , oUpdate = \case ~EmptyRef -> \x -> do
+                                 r <- sample
+                                 update r x
+            }
+
+fromStateless
+    :: (ScalingInPlace m v c a, MonadSample r m)
+    => (r -> a -> (c, Step a))
+    -> OptoM m v a
+fromStateless update = fromStatelessM (\r -> pure . update r)
+
 iterateStochUntilM
     :: forall m v r a. (MonadSample r m)
     => (Step a -> a -> m Bool)       -- ^ step, current
@@ -74,11 +91,7 @@ sgdM
     => c
     -> (r -> a -> m a)          -- ^ gradient
     -> OptoM m v a
-sgdM lr gr =
-    MkOptoM { oInit   = EmptyRef
-            , oUpdate = \case ~EmptyRef -> \x -> sample >>= \r ->
-                                (-lr,) <$> gr r x
-            }
+sgdM lr gr = fromStatelessM $ \r -> fmap (-lr,) . gr r
 
 sgd
     :: (ScalingInPlace m v c a, MonadSample r m)
