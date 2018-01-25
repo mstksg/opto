@@ -9,6 +9,18 @@
 @package opto
 @version 0.1.0.0
 
+module Data.Type.ZipProd
+data ZipProd :: (Type -> Type -> Type) -> [Type] -> [Type] -> Type
+[ZPØ] :: ZipProd f '[] '[]
+[:<<] :: f a b -> ZipProd f as bs -> ZipProd f (a : as) (b : bs)
+onlyZP :: f a b -> ZipProd f '[a] '[b]
+headZP :: ZipProd f (a : as) (b : bs) -> f a b
+tailZP :: ZipProd f (a : as) (b : bs) -> ZipProd f as bs
+traverseZP :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x y)) -> ZipProd f as bs -> h (ZipProd g as bs)
+mapZP :: (forall x y. f x y -> g x y) -> ZipProd f as bs -> ZipProd g as bs
+traverseZP1 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x)) -> ZipProd f as bs -> h (Prod g as)
+traverseZP2 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g y)) -> ZipProd f as bs -> h (Prod g bs)
+
 module Numeric.Opto.Ref
 class Monad m => Ref m a v | v -> a
 newRef :: Ref m a v => a -> m v
@@ -18,9 +30,15 @@ modifyRef :: Ref m a v => v -> (a -> a) -> m ()
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
 updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
-data EmptyRef
-EmptyRef :: EmptyRef
-instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m Numeric.Opto.Ref.EmptyRef Numeric.Opto.Ref.EmptyRef
+data RefInit :: (Type -> Type) -> Type -> Type -> Type
+[RI] :: Ref m a v => a -> RefInit m a v
+data RefVar :: (Type -> Type) -> Type -> Type -> Type
+[RV] :: Ref m a v => v -> RefVar m a v
+type RefInits m = ZipProd (RefInit m)
+type RefVars m = ZipProd (RefVar m)
+initRefs :: Applicative m => ZipProd (RefInit m) as vs -> m (ZipProd (RefVar m) as vs)
+readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
+pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefInit m) as vs)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
 
@@ -60,10 +78,16 @@ scaleOne :: Scaling c a => c
 (.*) :: (Scaling c a, Num a, c ~ a) => c -> a -> a
 scaleOne :: (Scaling c a, Num c) => c
 class Scaling c a => Metric c a
+(<.>) :: Metric c a => a -> a -> c
 norm_inf :: Metric c a => a -> c
 norm_0 :: Metric c a => a -> c
 norm_1 :: Metric c a => a -> c
 norm_2 :: Metric c a => a -> c
+(<.>) :: (Metric c a, Num a, c ~ a) => a -> a -> c
+norm_inf :: (Metric c a, Num a, c ~ a) => a -> c
+norm_0 :: (Metric c a, Num a, c ~ a) => a -> c
+norm_1 :: (Metric c a, Num a, c ~ a) => a -> c
+norm_2 :: (Metric c a, Num a, c ~ a) => a -> c
 class (Ref m a v, Additive a) => AdditiveInPlace m v a
 (.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
@@ -73,6 +97,8 @@ instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Step.ScalingI
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.Step.ScalingInPlace m (Data.Vector.Mutable.MVector s a) a (Data.Vector.Vector a)
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Step.AdditiveInPlace m v GHC.Types.Double
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.Step.AdditiveInPlace m (Data.Vector.Mutable.MVector s a) (Data.Vector.Vector a)
+instance Numeric.Opto.Step.Metric GHC.Types.Double GHC.Types.Double
+instance (GHC.Num.Num a, GHC.Classes.Ord a) => Numeric.Opto.Step.Metric a (Data.Vector.Vector a)
 instance Numeric.Opto.Step.Scaling GHC.Types.Double GHC.Types.Double
 instance GHC.Num.Num a => Numeric.Opto.Step.Scaling a (Data.Vector.Vector a)
 instance Numeric.Opto.Step.Additive GHC.Types.Double
@@ -104,7 +130,7 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
 type Step a = a
 data OptoM :: (Type -> Type) -> Type -> Type -> Type
-[MkOptoM] :: (Ref m s sVar, ScalingInPlace m v c a) => {oInit :: !s, oUpdate :: !(sVar -> a -> m (c, Step a))} -> OptoM m v a
+[MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefInits m ss sVars), oUpdate :: !(RefVars m ss sVars -> a -> m (c, Step a))} -> OptoM m v a
 type Opto s = OptoM (ST s)
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> m (c, Step a, s)) -> OptoM m v a
 fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> (c, Step a, s)) -> OptoM m v a
