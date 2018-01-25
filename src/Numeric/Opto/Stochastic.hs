@@ -1,11 +1,12 @@
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE LambdaCase                #-}
-{-# LANGUAGE RankNTypes                #-}
-{-# LANGUAGE RecordWildCards           #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TupleSections             #-}
-{-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Numeric.Opto.Stochastic (
     MonadSample(..)
@@ -23,6 +24,8 @@ import           Control.Monad
 import           Control.Monad.Primitive
 import           Data.Default
 import           Data.Primitive.MutVar
+import           Data.Type.Product
+import           Data.Type.ZipProd
 import           Numeric.Opto.Core       (OptoM(..), Step)
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Sample
@@ -50,10 +53,10 @@ fromStatelessM
     => (r -> a -> m (c, Step a))
     -> OptoM m v a
 fromStatelessM update =
-    MkOptoM { oInit = EmptyRef
-            , oUpdate = \case ~EmptyRef -> \x -> do
-                                 r <- sample
-                                 update r x
+    MkOptoM { oInit   = ZPØ
+            , oUpdate = \_ x -> do
+                r <- sample
+                update r x
             }
 
 fromStateless
@@ -69,14 +72,14 @@ iterateStochUntilM
     -> OptoM m v a
     -> m (a, OptoM m v a)
 iterateStochUntilM stop x0 MkOptoM{..} = do
-    rS <- newRef oInit
+    rS <- initRefs oInit
     rX <- newRef @_ @a @v x0
     _ <- many $ do
       y      <- readRef rX
       (c, g) <- oUpdate rS =<< readRef rX
       rX .*+= (c, g)
       guard . not =<< stop (c .* g) y
-    s <- readRef rS
+    s <- pullRefs rS
     let o' = MkOptoM s oUpdate
     (, o') <$> readRef rX
 
@@ -128,16 +131,22 @@ adamM
     -> (r -> a -> m a)          -- ^ gradient
     -> OptoM m v a
 adamM Adam{..} gr =
-    MkOptoM { oInit   = (scaleOne @_ @a, addZero @a, addZero @a)
-            , oUpdate = \rS x -> sample >>= \r -> do
+    MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI addZero :<< ZPØ
+                     :: ZipProd (RefInit m)
+                                '[c                     ,a,a]
+                                '[MutVar (PrimState m) c,v,v]
+            , oUpdate = \rSs x -> sample >>= \r -> do
+                RV rT :<< RV rM :<< RV rV :<< ZPØ <- return rSs
+                rM .*= adamDecay1
+                rV .*= adamDecay1
                 g <- gr r x
-                (t0, m0, v0) <- readMutVar rS
-                let t1 = t0 + 1
-                    m1 = adamDecay1 .* m0 .+. (1 - adamDecay1) .* g
-                    v1 = adamDecay2 .* v0 .+. (1 - adamDecay2) .* g
-                    mHat = recip (1 - adamDecay1 ** t1) .* m1
-                    vHat = recip (1 - adamDecay2 ** t1) .* v1
-                writeMutVar rS (t1, m1, v1)
+                rM .*+= (1 - adamDecay1, g)
+                rV .*+= (1 - adamDecay2, g)
+                m ::< v ::< Ø <- readRefs (tailZP rSs)
+                t <- updateRef' rT $ \t0 -> let t1 = t0 + 1
+                                            in  (t1, t1)
+                let mHat = recip (1 - adamDecay1 ** t) .* m
+                    vHat = recip (1 - adamDecay2 ** t) .* v
                 return ( -adamStep
                        , mHat / (sqrt vHat + realToFrac adamEpsilon)
                        )
@@ -185,16 +194,24 @@ adaMaxM
     -> (r -> a -> m a)          -- ^ gradient
     -> OptoM m v a
 adaMaxM AdaMax{..} gr =
-    MkOptoM { oInit   = (scaleOne @_ @a, addZero @a, 0 :: c)
-            , oUpdate = \rS x -> sample >>= \r -> do
+    MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI 0 :<< ZPØ
+                     :: ZipProd (RefInit m)
+                                '[c,a,c]
+                                '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
+            , oUpdate = \rSs x -> sample >>= \r -> do
+                RV rT :<< RV rM :<< RV rU :<< ZPØ <- return rSs
+                rM .*= adaMaxDecay1
                 g <- gr r x
-                (t0, m0, u0) <- readMutVar rS
-                let t1 = t0 + 1
-                    m1 = adaMaxDecay1 .* m0 .+. (1 - adaMaxDecay1) .* g
-                    u1 = max (adaMaxDecay2 * u0) (norm_inf g)
-                writeMutVar rS (t1, m1, u1)
-                return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t1) * u1)
-                       , m1
+                rM .*+= (1 - adaMaxDecay1, g)
+                t <- updateRef' rT $ \t0 ->
+                    let t1 = t0 + 1
+                    in  (t1, t1)
+                m <- readRef rM
+                u <- updateRef' rU $ \u0 ->
+                    let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
+                    in  (u1, u1)
+                return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
+                       , m
                        )
             }
 

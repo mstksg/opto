@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module Numeric.Opto.Core (
     Ref(..)
@@ -25,6 +26,7 @@ import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Kind
 import           Data.Primitive.MutVar
+import           Data.Type.ZipProd
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Step
 import           Unsafe.Coerce
@@ -32,9 +34,9 @@ import           Unsafe.Coerce
 type Step a = a
 
 data OptoM :: (Type -> Type) -> Type -> Type -> Type where
-    MkOptoM :: (Ref m s sVar, ScalingInPlace m v c a)
-            => { oInit   :: !s
-               , oUpdate :: !(sVar -> a -> m (c, Step a))
+    MkOptoM :: ScalingInPlace m v c a
+            => { oInit   :: !(RefInits m ss sVars)
+               , oUpdate :: !(RefVars m ss sVars -> a -> m (c, Step a))
                }
             -> OptoM m v a
 
@@ -46,8 +48,8 @@ fromCopying
     -> (a -> s -> m (c, Step a, s))
     -> OptoM m v a
 fromCopying s0 update =
-    MkOptoM { oInit   = s0
-            , oUpdate = \rS x -> do
+    MkOptoM { oInit   = onlyZP (RI s0)
+            , oUpdate = \(headZP->RV rS) x -> do
                 (c, g, s) <- update x =<< readMutVar rS
                 writeMutVar rS s
                 return (c, g)
@@ -65,8 +67,8 @@ fromStatelessM
     => (a -> m (c, Step a))
     -> OptoM m v a
 fromStatelessM update =
-    MkOptoM { oInit = EmptyRef
-            , oUpdate = \case ~EmptyRef -> update
+    MkOptoM { oInit = ZPØ
+            , oUpdate = const update
             }
 
 fromStateless
@@ -82,16 +84,17 @@ iterateOptoM
     -> OptoM m v a
     -> m (a, OptoM m v a)
 iterateOptoM stop x0 MkOptoM{..} = do
-    rS <- newRef oInit
+    rSs <- initRefs oInit
+    -- rS <- newRef oInit
     rX <- newRef @m @a @v x0
     _ <- runMaybeT . many $ do
       (x, step) <- lift $ do
         x <- readRef rX
-        (c, g) <- oUpdate rS x
+        (c, g) <- oUpdate rSs x
         rX .*+= (c, g)
         return (x, c .* g)
       guard . not =<< lift (stop step x)
-    s <- readRef rS
+    s <- pullRefs rSs
     let o' = MkOptoM s oUpdate
     (, o') <$> readRef rX
 

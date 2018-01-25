@@ -7,8 +7,8 @@
 
 module Numeric.Opto.Ref (
     Ref(..)
-  , RefInit(..), RefVar, initRefs, readRefs
-  , EmptyRef(..)
+  , RefInit(..), RefVar(..), RefInits, RefVars
+  , initRefs, readRefs, pullRefs
   ) where
 
 import           Control.Monad.Primitive
@@ -41,11 +41,18 @@ data RefInit :: (Type -> Type) -> Type -> Type -> Type where
 data RefVar :: (Type -> Type) -> Type -> Type -> Type where
     RV :: Ref m a v => v -> RefVar m a v
 
+type RefInits m = ZipProd (RefInit m)
+type RefVars  m = ZipProd (RefVar  m)
+
 initRefs :: Applicative m => ZipProd (RefInit m) as vs -> m (ZipProd (RefVar m) as vs)
 initRefs = traverseZP $ \(RI i) -> RV <$> newRef i
 
 readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
 readRefs = traverseZP1 $ \(RV v) -> I <$> readRef v
+
+pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefInit m) as vs)
+pullRefs = traverseZP $ \(RV v) -> RI <$> readRef v
+
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
     newRef     = newMutVar
@@ -72,16 +79,3 @@ instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) w
       (v, x) <- f <$> V.freeze r
       v `seq` x `seq` V.copy r v
       return x
-
-
-data EmptyRef = EmptyRef
-
-instance Monad m => Ref m EmptyRef EmptyRef where
-    newRef     _   = pure EmptyRef
-    readRef    _   = pure EmptyRef
-    writeRef   _ _ = pure ()
-    modifyRef  _ _ = pure ()
-    modifyRef' _ _ = pure ()
-    updateRef  _ f = pure . snd . f $ EmptyRef
-    updateRef' _ f = let x = snd (f EmptyRef)
-                     in  x `seq` pure x
