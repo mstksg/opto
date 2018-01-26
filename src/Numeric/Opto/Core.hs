@@ -9,10 +9,7 @@
 {-# LANGUAGE ViewPatterns        #-}
 
 module Numeric.Opto.Core (
-    Ref(..)
-  , Additive(..), Scaling(..)
-  , AdditiveInPlace(..), ScalingInPlace(..)
-  , Step, OptoM(..), Opto
+    Step, OptoM(..), Opto
   , fromCopying, fromPure, fromStateless, fromStatelessM
   , iterateOptoM, iterateOpto
   , steepestDescent, steepestDescentM
