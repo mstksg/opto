@@ -105,29 +105,6 @@ instance Numeric.Opto.Step.Additive GHC.Types.Double
 instance GHC.Num.Num a => Numeric.Opto.Step.Additive (Data.Vector.Vector a)
 
 module Numeric.Opto.Core
-class Monad m => Ref m a v | v -> a
-newRef :: Ref m a v => a -> m v
-readRef :: Ref m a v => v -> m a
-writeRef :: Ref m a v => v -> a -> m ()
-modifyRef :: Ref m a v => v -> (a -> a) -> m ()
-modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
-updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
-updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
-class Additive a
-(.+.) :: Additive a => a -> a -> a
-addZero :: Additive a => a
-(.+.) :: (Additive a, Num a) => a -> a -> a
-addZero :: (Additive a, Num a) => a
-class (Num c, Additive a) => Scaling c a | a -> c
-(.*) :: Scaling c a => c -> a -> a
-scaleOne :: Scaling c a => c
-(.*) :: (Scaling c a, Num a, c ~ a) => c -> a -> a
-scaleOne :: (Scaling c a, Num c) => c
-class (Ref m a v, Additive a) => AdditiveInPlace m v a
-(.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
-class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
-(.*=) :: ScalingInPlace m v c a => v -> c -> m ()
-(.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
 type Step a = a
 data OptoM :: (Type -> Type) -> Type -> Type -> Type
 [MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefInits m ss sVars), oUpdate :: !(RefVars m ss sVars -> a -> m (c, Step a))} -> OptoM m v a
