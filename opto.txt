@@ -129,8 +129,20 @@ iterateStochUntilM :: forall m v r a. (MonadSample r m) => (Step a -> a -> m Boo
 iterateStochM :: MonadSample r m => a -> OptoM m v a -> m (a, OptoM m v a)
 sgdM :: (ScalingInPlace m v c a, MonadSample r m) => c -> (r -> a -> m a) -> OptoM m v a
 sgd :: (ScalingInPlace m v c a, MonadSample r m) => c -> (r -> a -> a) -> OptoM m v a
+data Adam c
+Adam :: !c -> !c -> !c -> !c -> Adam c
+[adamStep] :: Adam c -> !c
+[adamDecay1] :: Adam c -> !c
+[adamDecay2] :: Adam c -> !c
+[adamEpsilon] :: Adam c -> !c
 adam :: forall m r v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => Adam c -> (r -> a -> a) -> OptoM m v a
 adamM :: forall m r v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => Adam c -> (r -> a -> m a) -> OptoM m v a
+data AdaMax c
+AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
+[adaMaxStep] :: AdaMax c -> !c
+[adaMaxDecay1] :: AdaMax c -> !c
+[adaMaxDecay2] :: AdaMax c -> !c
+[adaMaxEpsilon] :: AdaMax c -> !c
 adaMax :: forall m r v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => AdaMax c -> (r -> a -> a) -> OptoM m v a
 adaMaxM :: forall m r v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => AdaMax c -> (r -> a -> m a) -> OptoM m v a
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Stochastic.AdaMax c)
