@@ -138,7 +138,7 @@ adamM Adam{..} gr =
             , oUpdate = \rSs x -> sample >>= \r -> do
                 RV rT :<< RV rM :<< RV rV :<< ZPØ <- return rSs
                 rM .*= adamDecay1
-                rV .*= adamDecay1
+                rV .*= adamDecay2
                 g <- gr r x
                 rM .*+= (1 - adamDecay1, g)
                 rV .*+= (1 - adamDecay2, g)

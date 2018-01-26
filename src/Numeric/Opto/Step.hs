@@ -101,4 +101,6 @@ instance (PrimMonad m, PrimState m ~ s, Num a) => AdditiveInPlace m (MV.MVector 
 instance (PrimMonad m, PrimState m ~ s, Num a) => ScalingInPlace m (MV.MVector s a) a (V.Vector a) where
     r .*= c = forM_ [0 .. MV.length r - 1] $ \i ->
       MV.modify r (c *) i
+    r .*+= (c, xs) = flip V.imapM_ xs $ \i x ->
+      MV.modify r (+ (c * x)) i
 
