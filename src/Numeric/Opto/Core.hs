@@ -64,7 +64,7 @@ fromStatelessM
     => (a -> m (c, Step a))
     -> OptoM m v a
 fromStatelessM update =
-    MkOptoM { oInit = ZPØ
+    MkOptoM { oInit   = ZPØ
             , oUpdate = const update
             }
 
@@ -82,7 +82,6 @@ iterateOptoM
     -> m (a, OptoM m v a)
 iterateOptoM stop x0 MkOptoM{..} = do
     rSs <- initRefs oInit
-    -- rS <- newRef oInit
     rX <- newRef @m @a @v x0
     _ <- runMaybeT . many $ do
       (x, step) <- lift $ do

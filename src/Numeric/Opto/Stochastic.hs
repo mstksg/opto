@@ -15,8 +15,8 @@ module Numeric.Opto.Stochastic (
   , iterateStochUntilM
   , iterateStochM
   , sgdM, sgd
-  , adam, adamM
-  , adaMax, adaMaxM
+  , Adam(..), adam, adamM
+  , AdaMax(..), adaMax, adaMaxM
   ) where
 
 import           Control.Applicative
