@@ -9,14 +9,13 @@ module Numeric.Opto (
     module Numeric.Opto.Ref
   , module Numeric.Opto.Update
   , module Numeric.Opto.Core
+  , module Numeric.Opto.Run
   , module Control.Monad.Sample
-  , sampling
   , steepestDescent
   , Adam(..), adam
   , AdaMax(..), adaMax
   ) where
 
--- import           Numeric.Opto.Sampling
 import           Control.Monad.Primitive
 import           Control.Monad.Sample
 import           Data.Default
@@ -25,15 +24,8 @@ import           Data.Type.Product
 import           Data.Type.ZipProd
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
+import           Numeric.Opto.Run
 import           Numeric.Opto.Update
-
-sampling
-    :: MonadSample r m
-    => (r -> Grad m a)
-    -> Grad m a
-sampling f x = do
-    r <- sample
-    f r x
 
 steepestDescent
     :: (ScalingInPlace m v c a, Applicative m)
