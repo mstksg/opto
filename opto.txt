@@ -138,7 +138,7 @@ iterateSamplingUntil_ :: forall m v r a. MonadSample r m => GradSample m r a -> 
 iterateSampling :: MonadSample r m => GradSample m r a -> a -> OptoM m v a -> m (a, OptoM m v a)
 iterateSampling_ :: MonadSample r m => GradSample m r a -> a -> OptoM m v a -> m a
 
-module Numeric.Opto
+module Numeric.Opto.Algorithms
 steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
 data Adam c
 Adam :: !c -> !c -> !c -> !c -> Adam c
@@ -154,9 +154,11 @@ AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxDecay2] :: AdaMax c -> !c
 [adaMaxEpsilon] :: AdaMax c -> !c
 adaMax :: forall m v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> OptoM m v a
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.AdaMax c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.AdaMax c)
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Adam c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Adam c)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.AdaMax a)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Adam a)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.AdaMax c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.AdaMax c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Adam c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Adam c)
+instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Algorithms.AdaMax a)
+instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Algorithms.Adam a)
+
+module Numeric.Opto
