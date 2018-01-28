@@ -41,6 +41,7 @@ readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
 pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefInit m) as vs)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
+instance (Control.Monad.Primitive.PrimMonad m, mv ~ Data.Vector.Generic.Base.Mutable v, Control.Monad.Primitive.PrimState m ~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
 
 module Numeric.Opto.Sample
 class MonadPlus m => MonadSample r m | m -> r
@@ -94,15 +95,15 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*=) :: ScalingInPlace m v c a => v -> c -> m ()
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Step.ScalingInPlace m v GHC.Types.Double GHC.Types.Double
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.Step.ScalingInPlace m (Data.Vector.Mutable.MVector s a) a (Data.Vector.Vector a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a, mv ~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Step.ScalingInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) a (Data.Vector.Generic.Sized.Vector v n a)
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Step.AdditiveInPlace m v GHC.Types.Double
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a) => Numeric.Opto.Step.AdditiveInPlace m (Data.Vector.Mutable.MVector s a) (Data.Vector.Vector a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a, mv ~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Step.AdditiveInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) (Data.Vector.Generic.Sized.Vector v n a)
 instance Numeric.Opto.Step.Metric GHC.Types.Double GHC.Types.Double
-instance (GHC.Num.Num a, GHC.Classes.Ord a) => Numeric.Opto.Step.Metric a (Data.Vector.Vector a)
+instance (GHC.Num.Num a, GHC.Classes.Ord a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Step.Metric a (Data.Vector.Generic.Sized.Vector v n a)
 instance Numeric.Opto.Step.Scaling GHC.Types.Double GHC.Types.Double
-instance GHC.Num.Num a => Numeric.Opto.Step.Scaling a (Data.Vector.Vector a)
+instance (GHC.Num.Num a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Step.Scaling a (Data.Vector.Generic.Sized.Vector v n a)
 instance Numeric.Opto.Step.Additive GHC.Types.Double
-instance GHC.Num.Num a => Numeric.Opto.Step.Additive (Data.Vector.Vector a)
+instance (GHC.Num.Num a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Step.Additive (Data.Vector.Generic.Sized.Vector v n a)
 
 module Numeric.Opto.Core
 type Step a = a
