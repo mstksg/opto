@@ -96,14 +96,24 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Update.ScalingInPlace m v GHC.Types.Double GHC.Types.Double
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a, mv ~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.ScalingInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) a (Data.Vector.Generic.Sized.Vector v n a)
+instance (GHC.TypeNats.KnownNat n, Numeric.Opto.Ref.Ref m (Internal.Static.R n) v) => Numeric.Opto.Update.ScalingInPlace m v GHC.Types.Double (Internal.Static.R n)
+instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k, Numeric.Opto.Ref.Ref m (Internal.Static.L n k) v) => Numeric.Opto.Update.ScalingInPlace m v GHC.Types.Double (Internal.Static.L n k)
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Update.AdditiveInPlace m v GHC.Types.Double
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a, mv ~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.AdditiveInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) (Data.Vector.Generic.Sized.Vector v n a)
+instance (GHC.TypeNats.KnownNat n, Numeric.Opto.Ref.Ref m (Internal.Static.R n) v) => Numeric.Opto.Update.AdditiveInPlace m v (Internal.Static.R n)
+instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k, Numeric.Opto.Ref.Ref m (Internal.Static.L n k) v) => Numeric.Opto.Update.AdditiveInPlace m v (Internal.Static.L n k)
 instance Numeric.Opto.Update.Metric GHC.Types.Double GHC.Types.Double
 instance (GHC.Num.Num a, GHC.Classes.Ord a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Metric a (Data.Vector.Generic.Sized.Vector v n a)
+instance GHC.TypeNats.KnownNat n => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.R n)
+instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat m) => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.L n m)
 instance Numeric.Opto.Update.Scaling GHC.Types.Double GHC.Types.Double
 instance (GHC.Num.Num a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Scaling a (Data.Vector.Generic.Sized.Vector v n a)
+instance GHC.TypeNats.KnownNat n => Numeric.Opto.Update.Scaling GHC.Types.Double (Internal.Static.R n)
+instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat m) => Numeric.Opto.Update.Scaling GHC.Types.Double (Internal.Static.L n m)
 instance Numeric.Opto.Update.Additive GHC.Types.Double
 instance (GHC.Num.Num a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Additive (Data.Vector.Generic.Sized.Vector v n a)
+instance Numeric.Opto.Update.Additive (Internal.Static.R n)
+instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat m) => Numeric.Opto.Update.Additive (Internal.Static.L n m)
 
 module Numeric.Opto.Core
 type Diff a = a
