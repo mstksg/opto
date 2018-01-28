@@ -1,3 +1,4 @@
+{-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -10,8 +11,8 @@ module Numeric.Opto (
   , module Numeric.Opto.Sample
   , module Numeric.Opto.Update
   , steepestDescent, steepestDescentM
-  , Adam(..), adam, adamM
-  , AdaMax(..), adaMax, adaMaxM
+  , Adam(..), adam
+  , AdaMax(..), adaMax
   ) where
 
 import           Control.Monad.Primitive
@@ -53,27 +54,26 @@ instance Fractional a => Default (Adam a) where
                , adamEpsilon = 1e-8
                }
 
-adamM
-    :: forall m r v a c.
+adam
+    :: forall m v a c.
      ( RealFloat c
      , Floating a
      , ScalingInPlace m v c a
-     , MonadSample r m
      , PrimMonad m
      )
     => Adam c
-    -> (r -> a -> m a)          -- ^ gradient
+    -> (a -> m a)          -- ^ gradient
     -> OptoM m v a
-adamM Adam{..} gr =
+adam Adam{..} gr =
     MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI addZero :<< ZPØ
                      :: ZipProd (RefInit m)
                                 '[c                     ,a,a]
                                 '[MutVar (PrimState m) c,v,v]
-            , oUpdate = \rSs x -> sample >>= \r -> do
+            , oUpdate = \rSs x -> do
                 RV rT :<< RV rM :<< RV rV :<< ZPØ <- return rSs
                 rM .*= adamDecay1
                 rV .*= adamDecay2
-                g <- gr r x
+                g <- gr x
                 rM .*+= (1 - adamDecay1, g)
                 rV .*+= (1 - adamDecay2, g)
                 m ::< v ::< Ø <- readRefs (tailZP rSs)
@@ -85,20 +85,6 @@ adamM Adam{..} gr =
                        , mHat / (sqrt vHat + realToFrac adamEpsilon)
                        )
             }
-
-adam
-    :: forall m r v a c.
-     ( RealFloat c
-     , Floating a
-     , ScalingInPlace m v c a
-     , MonadSample r m
-     , PrimMonad m
-     )
-    => Adam c
-    -> (r -> a -> a)          -- ^ gradient
-    -> OptoM m v a
-adam a gr = adamM a (\x -> pure . gr x)
-
 
 data AdaMax c = AdaMax
     { adaMaxStep    :: !c
@@ -115,27 +101,26 @@ instance Fractional a => Default (AdaMax a) where
                  , adaMaxEpsilon = 1e-8
                  }
 
-adaMaxM
-    :: forall m r v a c.
+adaMax
+    :: forall m v a c.
      ( RealFloat c
      , Floating a
      , Metric c a
      , ScalingInPlace m v c a
-     , MonadSample r m
      , PrimMonad m
      )
     => AdaMax c
-    -> (r -> a -> m a)          -- ^ gradient
+    -> (a -> m a)          -- ^ gradient
     -> OptoM m v a
-adaMaxM AdaMax{..} gr =
+adaMax AdaMax{..} gr =
     MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI 0 :<< ZPØ
                      :: ZipProd (RefInit m)
                                 '[c,a,c]
                                 '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
-            , oUpdate = \rSs x -> sample >>= \r -> do
+            , oUpdate = \rSs x -> do
                 RV rT :<< RV rM :<< RV rU :<< ZPØ <- return rSs
                 rM .*= adaMaxDecay1
-                g <- gr r x
+                g <- gr x
                 rM .*+= (1 - adaMaxDecay1, g)
                 t <- updateRef' rT $ \t0 ->
                     let t1 = t0 + 1
@@ -148,17 +133,3 @@ adaMaxM AdaMax{..} gr =
                        , m
                        )
             }
-
-adaMax
-    :: forall m r v a c.
-     ( RealFloat c
-     , Floating a
-     , Metric c a
-     , ScalingInPlace m v c a
-     , MonadSample r m
-     , PrimMonad m
-     )
-    => AdaMax c
-    -> (r -> a -> a)          -- ^ gradient
-    -> OptoM m v a
-adaMax a gr = adaMaxM a (\x -> pure . gr x)
