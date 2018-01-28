@@ -9,7 +9,7 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
-module Numeric.Opto.Sample (
+module Control.Monad.Sample (
     MonadSample(..)
   , SampleRefT, runSampleRefT, foldSampleRefT, sampleRefT
   , SampleFoldT, foldSampleFoldT, sampleFoldT

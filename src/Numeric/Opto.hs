@@ -6,24 +6,25 @@
 {-# LANGUAGE TupleSections       #-}
 
 module Numeric.Opto (
-    module Numeric.Opto.Core
-  , module Numeric.Opto.Ref
-  , module Numeric.Opto.Sample
+    module Numeric.Opto.Ref
   , module Numeric.Opto.Update
+  , module Numeric.Opto.Core
+  , module Control.Monad.Sample
   , sampling
   , steepestDescent
   , Adam(..), adam
   , AdaMax(..), adaMax
   ) where
 
+-- import           Numeric.Opto.Sampling
 import           Control.Monad.Primitive
+import           Control.Monad.Sample
 import           Data.Default
 import           Data.Primitive.MutVar
 import           Data.Type.Product
 import           Data.Type.ZipProd
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
-import           Numeric.Opto.Sample
 import           Numeric.Opto.Update
 
 sampling
