@@ -29,7 +29,7 @@ import           Numeric.Opto.Update
 
 steepestDescent
     :: (ScalingInPlace m v c a, Applicative m)
-    => c
+    => c                        -- ^ learning rate
     -> OptoM m v a
 steepestDescent lr = fromStatelessM $ \gr -> fmap (-lr,) . gr
 

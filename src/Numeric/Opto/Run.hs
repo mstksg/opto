@@ -5,9 +5,10 @@
 {-# LANGUAGE TypeApplications    #-}
 
 module Numeric.Opto.Run (
-    iterateOptoM, iterateOpto
-  , iterateSamplingUntil
-  , iterateSampling
+    iterateOptoM, iterateOptoM_
+  , iterateOpto, iterateOpto_
+  , iterateSamplingUntil, iterateSamplingUntil_
+  , iterateSampling, iterateSampling_
   ) where
 
 import           Control.Applicative
@@ -26,9 +27,9 @@ iterateOptoM
     :: forall m v a. Monad m
     => Grad m a                     -- ^ Gradient
     -> (Diff a -> a -> m Bool)      -- ^ Stopping condition
-    -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
+    -> a                            -- ^ Initial value
+    -> OptoM m v a                  -- ^ Optimizer
+    -> m (a, OptoM m v a)           -- ^ Optimized value with updated optimizer
 iterateOptoM gr stop x0 MkOptoM{..} = do
     rSs <- initRefs oInit
     rX <- newRef @m @a @v x0
@@ -45,23 +46,40 @@ iterateOptoM gr stop x0 MkOptoM{..} = do
   where
     update = oUpdate gr
 
+iterateOptoM_
+    :: forall m v a. Monad m
+    => Grad m a                     -- ^ Gradient
+    -> (Diff a -> a -> m Bool)      -- ^ Stopping condition
+    -> a                            -- ^ Initial value
+    -> OptoM m v a                  -- ^ Optimizer
+    -> m a                          -- ^ Optimized value
+iterateOptoM_ gr stop x0 = fmap fst . iterateOptoM gr stop x0
+
 iterateOpto
     :: (a -> Diff a)                -- ^ Gradient
     -> (Diff a -> a -> Bool)        -- ^ Stopping condition
-    -> a
-    -> (forall s'. Opto s' v a)
-    -> (a, Opto s v a)
-iterateOpto gr stop y0 o0 = runST $ do
-    (y', o') <- iterateOptoM (pure . gr) (\st -> pure . stop st) y0 o0
+    -> a                            -- ^ Initial value
+    -> (forall s'. Opto s' v a)     -- ^ Pure optimizer
+    -> (a, Opto s v a)              -- ^ Optimized value with updated optimizer
+iterateOpto gr stop x0 o0 = runST $ do
+    (y', o') <- iterateOptoM (pure . gr) (\st -> pure . stop st) x0 o0
     return (y', unsafeCoerce o')        -- is this safe?  probably.
+
+iterateOpto_
+    :: (a -> Diff a)                -- ^ Gradient
+    -> (Diff a -> a -> Bool)        -- ^ Stopping condition
+    -> a                            -- ^ Initial value
+    -> (forall s'. Opto s' v a)     -- ^ Pure optimizer
+    -> a                            -- ^ Optimized value
+iterateOpto_ gr stop x0 o0 = fst $ iterateOpto gr stop x0 o0
 
 iterateSamplingUntil
     :: forall m v r a. MonadSample r m
-    => GradSample m r a              -- ^ Gradient
-    -> (Diff a -> a -> m Bool)       -- ^ Stopping condition
-    -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
+    => GradSample m r a             -- ^ (Sampling) Gradient
+    -> (Diff a -> a -> m Bool)      -- ^ Stopping condition
+    -> a                            -- ^ Initial value
+    -> OptoM m v a                  -- ^ Optimizer
+    -> m (a, OptoM m v a)           -- ^ Optimized value with updated optimizer
 iterateSamplingUntil gr stop x0 MkOptoM{..} = do
     rS <- initRefs oInit
     rX <- newRef @_ @a @v x0
@@ -76,10 +94,27 @@ iterateSamplingUntil gr stop x0 MkOptoM{..} = do
   where
     update = oUpdate (sampling gr)
 
+iterateSamplingUntil_
+    :: forall m v r a. MonadSample r m
+    => GradSample m r a             -- ^ (Sampling) Gradient
+    -> (Diff a -> a -> m Bool)      -- ^ Stopping condition
+    -> a                            -- ^ Initial value
+    -> OptoM m v a                  -- ^ Optimizer
+    -> m a                          -- ^ Optimized value
+iterateSamplingUntil_ gr stop x0 = fmap fst . iterateSamplingUntil gr stop x0
+
 iterateSampling
     :: MonadSample r m
-    => GradSample m r a
-    -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
+    => GradSample m r a             -- ^ (Sampling) gradient
+    -> a                            -- ^ Initial value
+    -> OptoM m v a                  -- ^ Optimizer
+    -> m (a, OptoM m v a)           -- ^ Optimized value with updated optimizer
 iterateSampling gr = iterateSamplingUntil gr (\_ _ -> pure False)
+
+iterateSampling_
+    :: MonadSample r m
+    => GradSample m r a             -- ^ (Sampling) gradient
+    -> a                            -- ^ Initial value
+    -> OptoM m v a                  -- ^ Optimizer
+    -> m a                          -- ^ Optimized value
+iterateSampling_ gr x0 = fmap fst . iterateSampling gr x0
