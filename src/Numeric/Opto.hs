@@ -10,6 +10,7 @@ module Numeric.Opto (
   , module Numeric.Opto.Ref
   , module Numeric.Opto.Sample
   , module Numeric.Opto.Update
+  , sampling
   , steepestDescent
   , Adam(..), adam
   , AdaMax(..), adaMax
@@ -24,6 +25,14 @@ import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Sample
 import           Numeric.Opto.Update
+
+sampling
+    :: MonadSample r m
+    => (r -> Grad m a)
+    -> Grad m a
+sampling f x = do
+    r <- sample
+    f r x
 
 steepestDescent
     :: (ScalingInPlace m v c a, Applicative m)

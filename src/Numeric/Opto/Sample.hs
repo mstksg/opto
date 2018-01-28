@@ -70,3 +70,4 @@ foldSampleFoldT = lmap toList . runStateT . runMaybeT . sampleFoldState
 sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
 sampleFoldT = SampleFoldT . MaybeT . StateT
 
+
