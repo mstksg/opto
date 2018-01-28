@@ -116,39 +116,29 @@ fromStateless :: ScalingInPlace m v c a => (a -> (c, Step a)) -> OptoM m v a
 fromStatelessM :: ScalingInPlace m v c a => (a -> m (c, Step a)) -> OptoM m v a
 iterateOptoM :: forall m v a. Monad m => (Step a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
 iterateOpto :: (Step a -> a -> Bool) -> a -> (forall s'. Opto s' v a) -> (a, Opto s v a)
-steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> a) -> OptoM m v a
-steepestDescentM :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> m a) -> OptoM m v a
 
 module Numeric.Opto.Stochastic
-class MonadPlus m => MonadSample r m | m -> r
-sample :: MonadSample r m => m r
-fromCopying :: (PrimMonad m, ScalingInPlace m v c a, MonadSample r m) => s -> (r -> a -> s -> m (c, Step a, s)) -> OptoM m v a
-fromPure :: (PrimMonad m, ScalingInPlace m v c a, MonadSample r m) => s -> (r -> a -> s -> (c, Step a, s)) -> OptoM m v a
-fromStateless :: (ScalingInPlace m v c a, MonadSample r m) => (r -> a -> (c, Step a)) -> OptoM m v a
-fromStatelessM :: (ScalingInPlace m v c a, MonadSample r m) => (r -> a -> m (c, Step a)) -> OptoM m v a
-iterateStochUntilM :: forall m v r a. (MonadSample r m) => (Step a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
-iterateStochM :: MonadSample r m => a -> OptoM m v a -> m (a, OptoM m v a)
-sgdM :: (ScalingInPlace m v c a, MonadSample r m) => c -> (r -> a -> m a) -> OptoM m v a
-sgd :: (ScalingInPlace m v c a, MonadSample r m) => c -> (r -> a -> a) -> OptoM m v a
+
+module Numeric.Opto
+steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> a) -> OptoM m v a
+steepestDescentM :: (ScalingInPlace m v c a, Applicative m) => c -> (a -> m a) -> OptoM m v a
 data Adam c
 Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamStep] :: Adam c -> !c
 [adamDecay1] :: Adam c -> !c
 [adamDecay2] :: Adam c -> !c
 [adamEpsilon] :: Adam c -> !c
-adam :: forall m r v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => Adam c -> (r -> a -> a) -> OptoM m v a
-adamM :: forall m r v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => Adam c -> (r -> a -> m a) -> OptoM m v a
+adam :: forall m v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, PrimMonad m) => Adam c -> (a -> m a) -> OptoM m v a
 data AdaMax c
 AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxStep] :: AdaMax c -> !c
 [adaMaxDecay1] :: AdaMax c -> !c
 [adaMaxDecay2] :: AdaMax c -> !c
 [adaMaxEpsilon] :: AdaMax c -> !c
-adaMax :: forall m r v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => AdaMax c -> (r -> a -> a) -> OptoM m v a
-adaMaxM :: forall m r v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, MonadSample r m, PrimMonad m) => AdaMax c -> (r -> a -> m a) -> OptoM m v a
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Stochastic.AdaMax c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Stochastic.AdaMax c)
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Stochastic.Adam c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Stochastic.Adam c)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Stochastic.AdaMax a)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Stochastic.Adam a)
+adaMax :: forall m v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> (a -> m a) -> OptoM m v a
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.AdaMax c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.AdaMax c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Adam c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Adam c)
+instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.AdaMax a)
+instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Adam a)
