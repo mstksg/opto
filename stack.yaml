@@ -39,7 +39,7 @@ packages:
 - .
 - location:
     git: git@github.com:mstksg/vector-sized.git
-    commit: 89fd084946efbec0c6483425cafbc4edc49abd7d
+    commit: a1ecdd78536a9fa5f8ffd43e00566d7dad4d902e
   extra-dep: true
 - location:
     git: git@github.com:haskell/vector.git

@@ -10,7 +10,7 @@ module Numeric.Opto (
   , module Numeric.Opto.Ref
   , module Numeric.Opto.Sample
   , module Numeric.Opto.Update
-  , steepestDescent, steepestDescentM
+  , steepestDescent
   , Adam(..), adam
   , AdaMax(..), adaMax
   ) where
@@ -25,19 +25,11 @@ import           Numeric.Opto.Ref
 import           Numeric.Opto.Sample
 import           Numeric.Opto.Update
 
-steepestDescentM
-    :: (ScalingInPlace m v c a, Applicative m)
-    => c
-    -> (a -> m a)           -- ^ gradient
-    -> OptoM m v a
-steepestDescentM lr gr = fromStatelessM $ fmap (-lr,) . gr
-
 steepestDescent
     :: (ScalingInPlace m v c a, Applicative m)
     => c
-    -> (a -> a)             -- ^ gradient
     -> OptoM m v a
-steepestDescent lr gr = steepestDescentM lr (pure . gr)
+steepestDescent lr = fromStatelessM $ \gr -> fmap (-lr,) . gr
 
 data Adam c = Adam
     { adamStep    :: !c
@@ -62,14 +54,13 @@ adam
      , PrimMonad m
      )
     => Adam c
-    -> (a -> m a)          -- ^ gradient
     -> OptoM m v a
-adam Adam{..} gr =
+adam Adam{..} =
     MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI addZero :<< ZPØ
                      :: ZipProd (RefInit m)
                                 '[c                     ,a,a]
                                 '[MutVar (PrimState m) c,v,v]
-            , oUpdate = \rSs x -> do
+            , oUpdate = \gr rSs x -> do
                 RV rT :<< RV rM :<< RV rV :<< ZPØ <- return rSs
                 rM .*= adamDecay1
                 rV .*= adamDecay2
@@ -110,14 +101,13 @@ adaMax
      , PrimMonad m
      )
     => AdaMax c
-    -> (a -> m a)          -- ^ gradient
     -> OptoM m v a
-adaMax AdaMax{..} gr =
+adaMax AdaMax{..} =
     MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI 0 :<< ZPØ
                      :: ZipProd (RefInit m)
                                 '[c,a,c]
                                 '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
-            , oUpdate = \rSs x -> do
+            , oUpdate = \gr rSs x -> do
                 RV rT :<< RV rM :<< RV rU :<< ZPØ <- return rSs
                 rM .*= adaMaxDecay1
                 g <- gr x
