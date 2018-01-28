@@ -43,7 +43,7 @@ instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
 instance (Control.Monad.Primitive.PrimMonad m, mv ~ Data.Vector.Generic.Base.Mutable v, Control.Monad.Primitive.PrimState m ~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
 
-module Numeric.Opto.Sample
+module Control.Monad.Sample
 class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
 data SampleRefT v r m a
@@ -53,19 +53,19 @@ sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
 data SampleFoldT r m a
 foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
 sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
-instance GHC.Base.Monad m => GHC.Base.MonadPlus (Numeric.Opto.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.Alternative (Numeric.Opto.Sample.SampleFoldT r m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Numeric.Opto.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Numeric.Opto.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.Applicative (Numeric.Opto.Sample.SampleFoldT r m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Numeric.Opto.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.MonadPlus (Numeric.Opto.Sample.SampleRefT v r m)
-instance GHC.Base.Monad m => GHC.Base.Alternative (Numeric.Opto.Sample.SampleRefT v r m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Numeric.Opto.Sample.SampleRefT v r m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Numeric.Opto.Sample.SampleRefT v r m)
-instance GHC.Base.Monad m => GHC.Base.Applicative (Numeric.Opto.Sample.SampleRefT v r m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Numeric.Opto.Sample.SampleRefT v r m)
-instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Numeric.Opto.Sample.MonadSample r (Numeric.Opto.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleFoldT r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleFoldT r m)
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRefT v r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRefT v r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRefT v r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRefT v r m)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRefT v r m)
 
 module Numeric.Opto.Update
 class Additive a
@@ -115,11 +115,16 @@ fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s
 fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s -> (c, Diff a, s)) -> OptoM m v a
 fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> (c, Diff a)) -> OptoM m v a
 fromStatelessM :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
+type GradSample m r a = r -> Grad m a
+sampling :: MonadSample r m => GradSample m r a -> Grad m a
+
+module Numeric.Opto.Run
 iterateOptoM :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
 iterateOpto :: (a -> Diff a) -> (Diff a -> a -> Bool) -> a -> (forall s'. Opto s' v a) -> (a, Opto s v a)
+iterateSamplingUntil :: forall m v r a. MonadSample r m => GradSample m r a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
+iterateSampling :: MonadSample r m => GradSample m r a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 module Numeric.Opto
-sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
 steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
 data Adam c
 Adam :: !c -> !c -> !c -> !c -> Adam c
