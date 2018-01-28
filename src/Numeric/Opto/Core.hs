@@ -25,7 +25,7 @@ import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Type.ZipProd
 import           Numeric.Opto.Ref
-import           Numeric.Opto.Step
+import           Numeric.Opto.Update
 import           Unsafe.Coerce
 
 type Step a = a

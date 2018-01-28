@@ -29,7 +29,7 @@ import           Data.Type.ZipProd
 import           Numeric.Opto.Core       (OptoM(..), Step)
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Sample
-import           Numeric.Opto.Step
+import           Numeric.Opto.Update
 import qualified Numeric.Opto.Core       as OC
 
 fromCopying

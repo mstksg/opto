@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Numeric.Opto.Step (
+module Numeric.Opto.Update (
     Additive(..)
   , Scaling(..)
   , Metric(..)
