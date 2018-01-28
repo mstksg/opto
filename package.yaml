@@ -30,6 +30,7 @@ dependencies:
 - type-combinators
 - typelits-witnesses
 - finite-typelits
+- hmatrix
 
 library:
   source-dirs: src

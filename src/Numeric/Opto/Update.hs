@@ -18,19 +18,17 @@ module Numeric.Opto.Update (
   , ScalingInPlace(..)
   ) where
 
--- import           Data.Proxy
--- import           Data.Type.Equality
--- import           GHC.TypeLits.Compare
--- import qualified Data.Vector                    as V
--- import qualified Data.Vector.Mutable            as MV
 import           Control.Monad.Primitive
 import           Data.Finite
 import           Data.Foldable
+import           Data.Function
 import           GHC.TypeLits
 import           Numeric.Opto.Ref
 import qualified Data.Vector.Generic               as VG
 import qualified Data.Vector.Generic.Mutable.Sized as SVGM
 import qualified Data.Vector.Generic.Sized         as SVG
+import qualified Numeric.LinearAlgebra             as UH
+import qualified Numeric.LinearAlgebra.Static      as H
 
 class Additive a where
     infixl 6 .+.
@@ -117,3 +115,28 @@ instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a,
     r .*+= (c, xs) = flip SVG.imapM_ xs $ \i x ->
       SVGM.modify r (+ (c * x)) i
 
+instance Additive (H.R n)
+instance KnownNat n => Scaling Double (H.R n) where
+    c .* xs  = H.konst c * xs
+    scaleOne = 1
+instance KnownNat n => Metric Double (H.R n) where
+    (<.>)    = (H.<.>)
+    norm_inf = H.norm_Inf
+    norm_0   = H.norm_0
+    norm_1   = H.norm_1
+    norm_2   = H.norm_2
+instance (KnownNat n, Ref m (H.R n) v) => AdditiveInPlace m v (H.R n)
+instance (KnownNat n, Ref m (H.R n) v) => ScalingInPlace m v Double (H.R n)
+
+instance (KnownNat n, KnownNat m) => Additive (H.L n m)
+instance (KnownNat n, KnownNat m) => Scaling Double (H.L n m) where
+    c .* xs  = H.konst c * xs
+    scaleOne = 1
+instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
+    (<.>)    = (UH.<.>) `on` UH.flatten . H.extract
+    norm_inf = UH.maxElement . H.extract . abs
+    norm_0   = fromIntegral . uncurry (*) . H.size
+    norm_1   = UH.sumElements . H.extract
+    norm_2   = UH.norm_2 . UH.flatten . H.extract
+instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => AdditiveInPlace m v (H.L n k)
+instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => ScalingInPlace m v Double (H.L n k)
