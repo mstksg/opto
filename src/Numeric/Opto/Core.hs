@@ -57,7 +57,12 @@ fromPure
     => s
     -> (a -> s -> (c, Step a, s))
     -> OptoM m v a
-fromPure s0 update = fromCopying s0 (\x -> pure . update x)
+fromPure s0 update =
+    MkOptoM { oInit   = onlyZP (RI s0)
+            , oUpdate = \(headZP->RV rS) x -> atomicModifyMutVar' rS $ \s ->
+                  let (c, g, s') = update x s
+                  in  (s', (c, g))
+            }
 
 fromStatelessM
     :: ScalingInPlace m v c a

@@ -4,6 +4,7 @@
 {-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE TupleSections          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module Numeric.Opto.Ref (
     Ref(..)
@@ -18,8 +19,10 @@ import           Data.Primitive.MutVar
 import           Data.Type.Combinator
 import           Data.Type.Product
 import           Data.Type.ZipProd
-import qualified Data.Vector             as V
-import qualified Data.Vector.Mutable     as MV
+import qualified Data.Vector               as V
+import qualified Data.Vector.Generic       as VG
+import qualified Data.Vector.Generic.Sized as SVG
+import qualified Data.Vector.Mutable       as MV
 
 class Monad m => Ref m a v | v -> a where
     newRef     :: a -> m v
@@ -78,4 +81,22 @@ instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) w
     updateRef' r f = do
       (v, x) <- f <$> V.freeze r
       v `seq` x `seq` V.copy r v
+      return x
+
+instance (PrimMonad m, mv ~ VG.Mutable v, PrimState m ~ s, VG.Vector v a)
+      => Ref m (SVG.Vector v n a) (SVG.MVector mv n s a) where
+    newRef    = SVG.thaw
+    readRef   = SVG.freeze
+    writeRef  = SVG.copy
+    modifyRef r f = SVG.copy r . f =<< SVG.freeze r
+    modifyRef' r f = do
+      v <- f <$> SVG.freeze r
+      v `seq` SVG.copy r v
+    updateRef r f = do
+      (v, x) <- f <$> SVG.freeze r
+      SVG.copy r v
+      return x
+    updateRef' r f = do
+      (v, x) <- f <$> SVG.freeze r
+      v `seq` x `seq` SVG.copy r v
       return x

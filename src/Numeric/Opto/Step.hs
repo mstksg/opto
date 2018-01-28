@@ -1,10 +1,13 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
 module Numeric.Opto.Step (
@@ -15,11 +18,19 @@ module Numeric.Opto.Step (
   , ScalingInPlace(..)
   ) where
 
+-- import           Data.Proxy
+-- import           Data.Type.Equality
+-- import           GHC.TypeLits.Compare
+-- import qualified Data.Vector                    as V
+-- import qualified Data.Vector.Mutable            as MV
 import           Control.Monad.Primitive
+import           Data.Finite
 import           Data.Foldable
+import           GHC.TypeLits
 import           Numeric.Opto.Ref
-import qualified Data.Vector             as V
-import qualified Data.Vector.Mutable     as MV
+import qualified Data.Vector.Generic               as VG
+import qualified Data.Vector.Generic.Mutable.Sized as SVGM
+import qualified Data.Vector.Generic.Sized         as SVG
 
 class Additive a where
     infixl 6 .+.
@@ -79,28 +90,30 @@ instance Metric Double Double
 instance Ref m Double v => AdditiveInPlace m v Double
 instance Ref m Double v => ScalingInPlace m v Double Double
 
-instance Num a => Additive (V.Vector a) where
-    (.+.) = V.zipWith (+)
-    addZero = undefined
+instance (Num a, VG.Vector v a, KnownNat n) => Additive (SVG.Vector v n a) where
+    (.+.)   = (+)
+    addZero = 0
 
-instance Num a => Scaling a (V.Vector a) where
-    c .* xs  = (c *) <$> xs
+instance (Num a, VG.Vector v a, KnownNat n) => Scaling a (SVG.Vector v n a) where
+    c .* xs  = SVG.map (c *) xs
     scaleOne = 1
 
-instance (Num a, Ord a) => Metric a (V.Vector a) where
-    xs <.> ys = V.sum $ V.zipWith (*) xs ys
-    norm_inf  = V.maximum . V.map abs
-    norm_0    = fromIntegral . V.length
-    norm_1    = V.sum . V.map abs
-    norm_2    = V.sum . V.map (^ (2 :: Int))
+instance (Num a, Ord a, VG.Vector v a, KnownNat n) => Metric a (SVG.Vector v n a) where
+    xs <.> ys = SVG.sum (xs * ys)
+    norm_inf  = SVG.foldl' (\x y -> max (abs x) y) 0
+    norm_0    = fromIntegral . SVG.length
+    norm_1    = SVG.sum . abs
+    norm_2    = SVG.sum . (^ (2 :: Int))
 
-instance (PrimMonad m, PrimState m ~ s, Num a) => AdditiveInPlace m (MV.MVector s a) (V.Vector a) where
-    r .+.= xs = flip V.imapM_ xs $ \i x ->
-      MV.modify r (+ x) i
+instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
+      => AdditiveInPlace m (SVG.MVector mv n s a) (SVG.Vector v n a) where
+    r .+.= xs = flip SVG.imapM_ xs $ \i x ->
+      SVGM.modify r (+ x) i
 
-instance (PrimMonad m, PrimState m ~ s, Num a) => ScalingInPlace m (MV.MVector s a) a (V.Vector a) where
-    r .*= c = forM_ [0 .. MV.length r - 1] $ \i ->
-      MV.modify r (c *) i
-    r .*+= (c, xs) = flip V.imapM_ xs $ \i x ->
-      MV.modify r (+ (c * x)) i
+instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
+      => ScalingInPlace m (SVG.MVector mv n s a) a (SVG.Vector v n a) where
+    r .*= c = forM_ finites $ \i ->
+      SVGM.modify r (c *) i
+    r .*+= (c, xs) = flip SVG.imapM_ xs $ \i x ->
+      SVGM.modify r (+ (c * x)) i
 

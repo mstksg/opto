@@ -28,6 +28,8 @@ dependencies:
 - vector
 - profunctors
 - type-combinators
+- typelits-witnesses
+- finite-typelits
 
 library:
   source-dirs: src
