@@ -12,7 +12,6 @@ module Numeric.Opto.Core (
     Step, OptoM(..), Opto
   , fromCopying, fromPure, fromStateless, fromStatelessM
   , iterateOptoM, iterateOpto
-  , steepestDescent, steepestDescentM
   ) where
 
 import           Control.Applicative
@@ -107,17 +106,3 @@ iterateOpto
 iterateOpto stop y0 o0 = runST $ do
     (y', o') <- iterateOptoM (\st -> pure . stop st) y0 o0
     return (y', unsafeCoerce o')        -- is this safe?  probably.
-
-steepestDescentM
-    :: (ScalingInPlace m v c a, Applicative m)
-    => c
-    -> (a -> m a)           -- ^ gradient
-    -> OptoM m v a
-steepestDescentM lr gr = fromStatelessM $ fmap (-lr,) . gr
-
-steepestDescent
-    :: (ScalingInPlace m v c a, Applicative m)
-    => c
-    -> (a -> a)             -- ^ gradient
-    -> OptoM m v a
-steepestDescent lr gr = steepestDescentM lr (pure . gr)
