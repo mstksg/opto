@@ -14,7 +14,7 @@ module Numeric.Opto.Update (
     Additive(..), sumAdditive
   , Scaling(..)
   , Metric(..)
-  , AdditiveInPlace(..)
+  , AdditiveInPlace(..), sumAdditiveInPlace
   , ScalingInPlace(..)
   ) where
 
@@ -76,6 +76,9 @@ class (Ref m a v, Additive a) => AdditiveInPlace m v a where
     infix 4 .+.=
     (.+.=) :: v -> a -> m ()
     r .+.= x = modifyRef' r (.+. x)
+
+sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
+sumAdditiveInPlace v = mapM_ (v .+.=)
 
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a where
     infix 4 .*=

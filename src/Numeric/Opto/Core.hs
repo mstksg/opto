@@ -1,13 +1,17 @@
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE KindSignatures  #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module Numeric.Opto.Core (
     Diff, Grad, OptoM(..), Opto
   , fromCopying, fromPure, fromStateless, fromStatelessM
-  , GradSample, sampling, batchSampling
-  , batching
+  , reGrad
+  , batching, batching'
+  , GradSample, sampling, batchSampling, batchSampling'
   ) where
 
 import           Control.Monad
@@ -76,6 +80,32 @@ fromStateless
     -> OptoM m v a
 fromStateless update = fromStatelessM (\gr -> pure . update gr)
 
+reGrad
+    :: (Grad m a -> Grad m a)
+    -> OptoM m v a
+    -> OptoM m v a
+reGrad f MkOptoM{..} =
+    MkOptoM { oInit   = oInit
+            , oUpdate = \gr -> oUpdate (f gr)
+            }
+
+batching
+    :: forall m v a. AdditiveInPlace m v a
+    => Int
+    -> Grad m a
+    -> Grad m a
+batching n f x = do
+    rRef <- newRef @_ @_ @v addZero
+    sumAdditiveInPlace rRef =<< replicateM n (f x)
+    readRef rRef
+
+batching'
+    :: forall m v a. AdditiveInPlace m v a
+    => Int
+    -> Grad m a
+    -> Grad m a
+batching' n f x = sumAdditive <$> replicateM n (f x)
+
 type GradSample m r a = r -> Grad m a
 
 sampling
@@ -87,20 +117,21 @@ sampling f x = do
     f r x
 
 batchSampling
-    :: (MonadSample r m, Additive r)
+    :: forall r m v a. (MonadSample r m, AdditiveInPlace m v r)
     => Int
     -> GradSample m r a
     -> Grad m a
 batchSampling n f x = do
-    r <- sumAdditive <$> sampleN n
+    rRef <- newRef @_ @_ @v addZero
+    sumAdditiveInPlace rRef =<< sampleN n
+    r <- readRef rRef
     f r x
 
-batching
-    :: Int
-    -> OptoM m v a
-    -> OptoM m v a
-batching n MkOptoM{..} =
-    MkOptoM { oInit   = oInit
-            , oUpdate = \gr -> oUpdate $ \x ->
-                sumAdditive <$> replicateM n (gr x)
-            }
+batchSampling'
+    :: (MonadSample r m, Additive r)
+    => Int
+    -> GradSample m r a
+    -> Grad m a
+batchSampling' n f x = do
+    r <- sumAdditive <$> sampleN n
+    f r x
