@@ -21,14 +21,16 @@ import           Control.Monad.Primitive
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State
+import           Data.Bifunctor
 import           Data.Foldable
 import           Data.Profunctor
 import           Numeric.Opto.Ref
 
 class MonadPlus m => MonadSample r m | m -> r where
-    sample :: m r
+    sample  :: m r
+    sampleN :: Int -> m [r]
 
-newtype SampleRefT v r m a = SampleRefT { sampleRefReader :: ReaderT v (MaybeT m) a }
+newtype SampleRefT v r m a = SampleRefT { sampleRefReader :: MaybeT (ReaderT v m) a }
     deriving ( Functor
              , Applicative
              , Monad
@@ -38,7 +40,7 @@ newtype SampleRefT v r m a = SampleRefT { sampleRefReader :: ReaderT v (MaybeT m
              )
 
 runSampleRefT :: SampleRefT v r m a -> v -> m (Maybe a)
-runSampleRefT = fmap runMaybeT . runReaderT . sampleRefReader
+runSampleRefT = runReaderT . runMaybeT . sampleRefReader
 
 foldSampleRefT :: (Ref m [r] v, Foldable t) => SampleRefT v r m a -> t r -> m (Maybe a, [r])
 foldSampleRefT sr xs = do
@@ -47,13 +49,15 @@ foldSampleRefT sr xs = do
     (y,) <$> readRef r
 
 sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
-sampleRefT = SampleRefT . ReaderT . fmap MaybeT
+sampleRefT = SampleRefT . MaybeT . ReaderT
 
 instance (Monad m, Ref m [r] v) => MonadSample r (SampleRefT v r m) where
     sample = sampleRefT $ \v ->
       updateRef' v $  \case
         []   -> ([], Nothing)
         x:xs -> (xs, Just x )
+    sampleN n = sampleRefT $ \v ->
+      updateRef' v (second (mfilter (not . null) . Just) . splitAt n)
 
 newtype SampleFoldT r m a = SampleFoldT { sampleFoldState :: MaybeT (StateT [r] m) a }
     deriving ( Functor
@@ -70,4 +74,9 @@ foldSampleFoldT = lmap toList . runStateT . runMaybeT . sampleFoldState
 sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
 sampleFoldT = SampleFoldT . MaybeT . StateT
 
+instance Monad m =>  MonadSample r (SampleFoldT r m) where
+    sample = sampleFoldT . fmap return $ \case []   -> (Nothing, [])
+                                               x:xs -> (Just x , xs)
+    sampleN n = sampleFoldT . fmap return $
+      first (mfilter (not . null) . Just) . splitAt n
 
