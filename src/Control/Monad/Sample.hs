@@ -1,24 +1,19 @@
-{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
-{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE UnboxedTuples              #-}
-{-# LANGUAGE UndecidableInstances       #-}
 
 module Control.Monad.Sample (
     MonadSample(..)
   , SampleRef, runSampleRef, foldSampleRef, sampleRef
   , SampleFoldT, foldSampleFoldT, sampleFoldT
   , SampleFold, foldSampleFold, sampleFold
-  , Batching(..)
   ) where
 
 import           Control.Applicative
@@ -30,10 +25,7 @@ import           Control.Monad.Trans.State
 import           Data.Bifunctor
 import           Data.Foldable
 import           Data.Functor.Identity
-import           Data.List.Split
 import           Data.Profunctor
-import           Data.Proxy
-import           GHC.TypeLits
 import           Numeric.Opto.Ref
 
 class MonadPlus m => MonadSample r m | m -> r where
@@ -97,18 +89,3 @@ instance Monad m =>  MonadSample r (SampleFoldT r m) where
                                 x:xs -> (Just x , xs)
     sampleN n = sampleFold $
       first (mfilter (not . null) . Just) . splitAt n
-
-newtype Batching (n :: Nat) m a = Batching { runBatching :: m a }
-    deriving ( Functor
-             , Applicative
-             , Monad
-             , PrimMonad
-             , Alternative
-             , MonadPlus
-             )
-
-instance (KnownNat n, MonadSample r m) => MonadSample [r] (Batching n m) where
-    sample    = Batching $ sampleN (fromIntegral (natVal (Proxy @n)))
-    sampleN m = Batching $ chunksOf n <$> sampleN (n * m)
-      where
-        n = fromIntegral $ natVal (Proxy @n)

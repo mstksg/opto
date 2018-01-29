@@ -1,13 +1,16 @@
-{-# LANGUAGE GADTs          #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE ViewPatterns   #-}
+{-# LANGUAGE GADTs           #-}
+{-# LANGUAGE KindSignatures  #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns    #-}
 
 module Numeric.Opto.Core (
     Diff, Grad, OptoM(..), Opto
   , fromCopying, fromPure, fromStateless, fromStatelessM
-  , GradSample, sampling
+  , GradSample, sampling, batchSampling
+  , batching
   ) where
 
+import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.ST
 import           Control.Monad.Sample
@@ -82,3 +85,22 @@ sampling
 sampling f x = do
     r <- sample
     f r x
+
+batchSampling
+    :: (MonadSample r m, Additive r)
+    => Int
+    -> GradSample m r a
+    -> Grad m a
+batchSampling n f x = do
+    r <- sumAdditive <$> sampleN n
+    f r x
+
+batching
+    :: Int
+    -> OptoM m v a
+    -> OptoM m v a
+batching n MkOptoM{..} =
+    MkOptoM { oInit   = oInit
+            , oUpdate = \gr -> oUpdate $ \x ->
+                sumAdditive <$> replicateM n (gr x)
+            }

@@ -11,7 +11,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 module Numeric.Opto.Update (
-    Additive(..)
+    Additive(..), sumAdditive
   , Scaling(..)
   , Metric(..)
   , AdditiveInPlace(..)
@@ -39,6 +39,9 @@ class Additive a where
     (.+.) = (+)
     default addZero :: Num a => a
     addZero = 0
+
+sumAdditive :: (Additive a, Foldable t) => t a -> a
+sumAdditive = foldl' (.+.) addZero
 
 class (Num c, Additive a) => Scaling c a | a -> c where
     infixl 7 .*
