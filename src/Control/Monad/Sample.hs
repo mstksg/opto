@@ -15,7 +15,7 @@
 
 module Control.Monad.Sample (
     MonadSample(..)
-  , SampleRefT, runSampleRefT, foldSampleRefT, sampleRefT
+  , SampleRef, runSampleRef, foldSampleRef, sampleRef
   , SampleFoldT, foldSampleFoldT, sampleFoldT
   , SampleFold, foldSampleFold, sampleFold
   , Batching(..)
@@ -40,7 +40,7 @@ class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
     sampleN :: Int -> m [r]
 
-newtype SampleRefT v r m a = SampleRefT { sampleRefReader :: MaybeT (ReaderT v m) a }
+newtype SampleRef v r m a = SampleRef { sampleRefReader :: MaybeT (ReaderT v m) a }
     deriving ( Functor
              , Applicative
              , Monad
@@ -49,24 +49,24 @@ newtype SampleRefT v r m a = SampleRefT { sampleRefReader :: MaybeT (ReaderT v m
              , MonadPlus
              )
 
-runSampleRefT :: SampleRefT v r m a -> v -> m (Maybe a)
-runSampleRefT = runReaderT . runMaybeT . sampleRefReader
+runSampleRef :: SampleRef v r m a -> v -> m (Maybe a)
+runSampleRef = runReaderT . runMaybeT . sampleRefReader
 
-foldSampleRefT :: (Ref m [r] v, Foldable t) => SampleRefT v r m a -> t r -> m (Maybe a, [r])
-foldSampleRefT sr xs = do
+foldSampleRef :: (Ref m [r] v, Foldable t) => SampleRef v r m a -> t r -> m (Maybe a, [r])
+foldSampleRef sr xs = do
     r <- newRef (toList xs)
-    y <- runSampleRefT sr r
+    y <- runSampleRef sr r
     (y,) <$> readRef r
 
-sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
-sampleRefT = SampleRefT . MaybeT . ReaderT
+sampleRef :: (v -> m (Maybe a)) -> SampleRef v r m a
+sampleRef = SampleRef . MaybeT . ReaderT
 
-instance (Monad m, Ref m [r] v) => MonadSample r (SampleRefT v r m) where
-    sample = sampleRefT $ \v ->
+instance (Monad m, Ref m [r] v) => MonadSample r (SampleRef v r m) where
+    sample = sampleRef $ \v ->
       updateRef' v $  \case
         []   -> ([], Nothing)
         x:xs -> (xs, Just x )
-    sampleN n = sampleRefT $ \v ->
+    sampleN n = sampleRef $ \v ->
       updateRef' v (second (mfilter (not . null) . Just) . splitAt n)
 
 newtype SampleFoldT r m a = SampleFoldT { sampleFoldState :: MaybeT (StateT [r] m) a }
