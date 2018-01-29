@@ -46,6 +46,7 @@ instance (Control.Monad.Primitive.PrimMonad m, mv ~ Data.Vector.Generic.Base.Mut
 module Control.Monad.Sample
 class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
+sampleN :: MonadSample r m => Int -> m [r]
 data SampleRefT v r m a
 runSampleRefT :: SampleRefT v r m a -> v -> m (Maybe a)
 foldSampleRefT :: (Ref m [r] v, Foldable t) => SampleRefT v r m a -> t r -> m (Maybe a, [r])
@@ -53,6 +54,18 @@ sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
 data SampleFoldT r m a
 foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
 sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
+type SampleFold r = SampleFoldT r Identity
+foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
+sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
+newtype Batching (n :: Nat) m a
+Batching :: m a -> Batching m a
+[runBatching] :: Batching m a -> m a
+instance GHC.Base.MonadPlus m => GHC.Base.MonadPlus (Control.Monad.Sample.Batching n m)
+instance GHC.Base.Alternative m => GHC.Base.Alternative (Control.Monad.Sample.Batching n m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.Batching n m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.Batching n m)
+instance GHC.Base.Applicative m => GHC.Base.Applicative (Control.Monad.Sample.Batching n m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.Batching n m)
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
 instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleFoldT r m)
@@ -65,6 +78,8 @@ instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMona
 instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRefT v r m)
 instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRefT v r m)
 instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRefT v r m)
+instance (GHC.TypeNats.KnownNat n, Control.Monad.Sample.MonadSample r m) => Control.Monad.Sample.MonadSample [r] (Control.Monad.Sample.Batching n m)
+instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleFoldT r m)
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRefT v r m)
 
 module Numeric.Opto.Update
