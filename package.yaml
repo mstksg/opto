@@ -31,6 +31,7 @@ dependencies:
 - typelits-witnesses
 - finite-typelits
 - hmatrix
+- split
 
 library:
   source-dirs: src
