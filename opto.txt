@@ -47,40 +47,30 @@ module Control.Monad.Sample
 class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
 sampleN :: MonadSample r m => Int -> m [r]
-data SampleRefT v r m a
-runSampleRefT :: SampleRefT v r m a -> v -> m (Maybe a)
-foldSampleRefT :: (Ref m [r] v, Foldable t) => SampleRefT v r m a -> t r -> m (Maybe a, [r])
-sampleRefT :: (v -> m (Maybe a)) -> SampleRefT v r m a
+data SampleRef v r m a
+runSampleRef :: SampleRef v r m a -> v -> m (Maybe a)
+foldSampleRef :: (Ref m [r] v, Foldable t) => SampleRef v r m a -> t r -> m (Maybe a, [r])
+sampleRef :: (v -> m (Maybe a)) -> SampleRef v r m a
 data SampleFoldT r m a
 foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
 sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
 type SampleFold r = SampleFoldT r Identity
 foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
-newtype Batching (n :: Nat) m a
-Batching :: m a -> Batching m a
-[runBatching] :: Batching m a -> m a
-instance GHC.Base.MonadPlus m => GHC.Base.MonadPlus (Control.Monad.Sample.Batching n m)
-instance GHC.Base.Alternative m => GHC.Base.Alternative (Control.Monad.Sample.Batching n m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.Batching n m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.Batching n m)
-instance GHC.Base.Applicative m => GHC.Base.Applicative (Control.Monad.Sample.Batching n m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.Batching n m)
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
 instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRefT v r m)
-instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRefT v r m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRefT v r m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRefT v r m)
-instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRefT v r m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRefT v r m)
-instance (GHC.TypeNats.KnownNat n, Control.Monad.Sample.MonadSample r m) => Control.Monad.Sample.MonadSample [r] (Control.Monad.Sample.Batching n m)
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRef v r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRef v r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRef v r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRef v r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRef v r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRef v r m)
 instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleFoldT r m)
-instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRefT v r m)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRef v r m)
 
 module Numeric.Opto.Update
 class Additive a
@@ -88,6 +78,7 @@ class Additive a
 addZero :: Additive a => a
 (.+.) :: (Additive a, Num a) => a -> a -> a
 addZero :: (Additive a, Num a) => a
+sumAdditive :: (Additive a, Foldable t) => t a -> a
 class (Num c, Additive a) => Scaling c a | a -> c
 (.*) :: Scaling c a => c -> a -> a
 scaleOne :: Scaling c a => c
@@ -142,6 +133,8 @@ fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> (c, Diff a)) -> Opt
 fromStatelessM :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
 type GradSample m r a = r -> Grad m a
 sampling :: MonadSample r m => GradSample m r a -> Grad m a
+batchSampling :: (MonadSample r m, Additive r) => Int -> GradSample m r a -> Grad m a
+batching :: Int -> OptoM m v a -> OptoM m v a
 
 module Numeric.Opto.Run
 iterateOptoM :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
