@@ -135,13 +135,11 @@ main = MWC.withSystemRandom $ \g -> do
 
 trainList :: forall s. [(R 784, R 10)] -> Net -> ST s Net
 trainList xs n0 = fmap (fromJust . fst) . flip foldSampleFoldT xs $
-    runOptoMany_ (sampling $ \(x, y) ->
-                    pure . gradBP (netErr (constVar x) (constVar y))
-                 )
-                 Nothing
-                 n0
-                 (adam @_ @(MutVar s Net) def)
-                 -- (steepestDescent @_ @(MutVar s Net) 0.02)
+    evalOptoMany o n0 (adam @_ @(MutVar s Net) def)
+    -- evalOptoMany o n0 (steepestDescent @_ @(MutVar s Net) 0.02)
+  where
+    g (x, y) = pure . gradBP (netErr (constVar x) (constVar y))
+    o = RO' (sampling g) Nothing Nothing
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)

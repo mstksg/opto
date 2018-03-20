@@ -10,8 +10,9 @@ module Numeric.Opto.Core (
     Diff, Grad, OptoM(..), Opto
   , fromCopying, fromPure, fromStateless, fromStatelessM
   , reGrad
-  , batching, batching'
-  , GradSample, sampling, batchSampling, batchSampling'
+  -- , batching, batching'
+  , GradSample, sampling
+  -- , batchSampling, batchSampling'
   ) where
 
 import           Control.Monad
@@ -89,22 +90,22 @@ reGrad f MkOptoM{..} =
             , oUpdate = \gr -> oUpdate (f gr)
             }
 
-batching
-    :: forall m v a. AdditiveInPlace m v a
-    => Int
-    -> Grad m a
-    -> Grad m a
-batching n f x = do
-    rRef <- newRef @_ @_ @v addZero
-    sumAdditiveInPlace rRef =<< replicateM n (f x)
-    readRef rRef
+-- batching
+--     :: forall m v a. AdditiveInPlace m v a
+--     => Int
+--     -> Grad m a
+--     -> Grad m a
+-- batching n f x = do
+--     rRef <- newRef @_ @_ @v addZero
+--     sumAdditiveInPlace rRef =<< replicateM n (f x)
+--     readRef rRef
 
-batching'
-    :: forall m v a. AdditiveInPlace m v a
-    => Int
-    -> Grad m a
-    -> Grad m a
-batching' n f x = sumAdditive <$> replicateM n (f x)
+-- batching'
+--     :: forall m v a. AdditiveInPlace m v a
+--     => Int
+--     -> Grad m a
+--     -> Grad m a
+-- batching' n f x = sumAdditive <$> replicateM n (f x)
 
 type GradSample m r a = r -> Grad m a
 
@@ -116,22 +117,22 @@ sampling f x = do
     r <- sample
     f r x
 
-batchSampling
-    :: forall r m v a. (MonadSample r m, AdditiveInPlace m v r)
-    => Int
-    -> GradSample m r a
-    -> Grad m a
-batchSampling n f x = do
-    rRef <- newRef @_ @_ @v addZero
-    sumAdditiveInPlace rRef =<< sampleN n
-    r <- readRef rRef
-    f r x
+-- batchSampling
+--     :: forall r m v a. (MonadSample r m, AdditiveInPlace m v r)
+--     => Int
+--     -> GradSample m r a
+--     -> Grad m a
+-- batchSampling n f x = do
+--     rRef <- newRef @_ @_ @v addZero
+--     sumAdditiveInPlace rRef =<< sampleN n
+--     r <- readRef rRef
+--     f r x
 
-batchSampling'
-    :: (MonadSample r m, Additive r)
-    => Int
-    -> GradSample m r a
-    -> Grad m a
-batchSampling' n f x = do
-    r <- sumAdditive <$> sampleN n
-    f r x
+-- batchSampling'
+--     :: (MonadSample r m, Additive r)
+--     => Int
+--     -> GradSample m r a
+--     -> Grad m a
+-- batchSampling' n f x = do
+--     r <- sumAdditive <$> sampleN n
+--     f r x
