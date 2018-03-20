@@ -141,17 +141,17 @@ batchSampling :: forall r m v a. (MonadSample r m, AdditiveInPlace m v r) => Int
 batchSampling' :: (MonadSample r m, Additive r) => Int -> GradSample m r a -> Grad m a
 
 module Numeric.Opto.Run
-iterateOptoM :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
-iterateOptoM_ :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m a
-iterateOpto :: (a -> Diff a) -> (Diff a -> a -> Bool) -> a -> (forall s'. Opto s' v a) -> (a, Opto s v a)
-iterateOpto_ :: (a -> Diff a) -> (Diff a -> a -> Bool) -> a -> (forall s'. Opto s' v a) -> a
+iterateOptoM :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> a -> OptoM m v a -> m (a, OptoM m v a)
+iterateOptoM_ :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> a -> OptoM m v a -> m a
+iterateOpto :: (a -> Diff a) -> (Diff a -> a -> Bool) -> Maybe Int -> a -> (forall s'. Opto s' v a) -> (a, Opto s v a)
+iterateOpto_ :: (a -> Diff a) -> (Diff a -> a -> Bool) -> Maybe Int -> a -> (forall s'. Opto s' v a) -> a
 iterateSamplingUntil :: forall m v r a. MonadSample r m => GradSample m r a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m (a, OptoM m v a)
 iterateSamplingUntil_ :: forall m v r a. MonadSample r m => GradSample m r a -> (Diff a -> a -> m Bool) -> a -> OptoM m v a -> m a
 iterateSampling :: MonadSample r m => GradSample m r a -> a -> OptoM m v a -> m (a, OptoM m v a)
 iterateSampling_ :: MonadSample r m => GradSample m r a -> a -> OptoM m v a -> m a
 
 module Numeric.Opto.Algorithms
-steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
+steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
 data Adam c
 Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamStep] :: Adam c -> !c
