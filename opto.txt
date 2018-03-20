@@ -153,8 +153,7 @@ data OptoM :: (Type -> Type) -> Type -> Type -> Type
 [MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefVals m ss sVars), oUpdate :: !(Grad m a -> RefVars m ss sVars -> a -> m (c, Diff a))} -> OptoM m v a
 type Opto s = OptoM (ST s)
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s -> m (c, Diff a, s)) -> OptoM m v a
-fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> (c, Diff a)) -> OptoM m v a
-fromStatelessM :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
+fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
 reGrad :: (Grad m a -> Grad m a) -> OptoM m v a -> OptoM m v a
 sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
 
