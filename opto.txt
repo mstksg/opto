@@ -165,14 +165,19 @@ batchSampling :: forall r m v a. (MonadSample r m, AdditiveInPlace m v r) => Int
 batchSampling' :: (MonadSample r m, Additive r) => Int -> GradSample m r a -> Grad m a
 
 module Numeric.Opto.Run
-runOptoManyUntil :: forall m v a. Alternative m => Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> a -> OptoM m v a -> m (a, OptoM m v a)
-runOptoManyUntil_ :: forall m v a. Alternative m => Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> a -> OptoM m v a -> m a
-runOptoMany :: forall m v a. Alternative m => Grad m a -> Maybe Int -> a -> OptoM m v a -> m (a, OptoM m v a)
-runOptoMany_ :: forall m v a. Alternative m => Grad m a -> Maybe Int -> a -> OptoM m v a -> m a
-runOptoUntil :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> a -> OptoM m v a -> m (a, OptoM m v a)
-runOptoUntil_ :: forall m v a. Monad m => Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> a -> OptoM m v a -> m a
-runOpto :: forall m v a. Monad m => Grad m a -> Maybe Int -> a -> OptoM m v a -> m (a, OptoM m v a)
-runOpto_ :: forall m v a. Monad m => Grad m a -> Maybe Int -> a -> OptoM m v a -> m a
+data RunOpts m a
+RO :: Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
+[roGrad] :: RunOpts m a -> Grad m a
+[roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
+[roLimit] :: RunOpts m a -> Maybe Int
+[roBatch] :: RunOpts m a -> Maybe Int
+roGrad' :: () => RunOpts m a -> Applicative m -> Grad m a
+roLimit' :: () => RunOpts m a -> Applicative m -> Maybe Int
+roBatch' :: () => RunOpts m a -> Applicative m -> Maybe Int
+runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
+runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
 module Numeric.Opto.Algorithms
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
