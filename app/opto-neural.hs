@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE ViewPatterns          #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 
 import           Control.DeepSeq
 import           Control.Exception
@@ -21,7 +22,6 @@ import           Data.Bitraversable
 import           Data.Default
 import           Data.Foldable
 import           Data.IDX
-import           Data.List
 import           Data.List.Split
 import           Data.Maybe
 import           Data.Primitive.MutVar
@@ -41,7 +41,6 @@ import qualified Data.Vector                           as V
 import qualified Data.Vector.Generic                   as VG
 import qualified Numeric.LinearAlgebra                 as HM
 import qualified Numeric.LinearAlgebra.Static          as H
-import qualified Numeric.Opto                          as O
 import qualified System.Random.MWC                     as MWC
 import qualified System.Random.MWC.Distributions       as MWC
 
@@ -94,12 +93,6 @@ netErr
     -> BVar s Net
     -> BVar s Double
 netErr x targ n = crossEntropy targ (runNet n x)
-
-stepNet :: R 784 -> R 10 -> Net -> Net
-stepNet x targ net0 = net0 - 0.02 * gr
-  where
-    gr :: Net
-    gr = gradBP (netErr (constVar x) (constVar targ)) net0
 
 -- *********************************************
 -- Plumbing for running the network on real data

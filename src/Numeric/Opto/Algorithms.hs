@@ -4,9 +4,14 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
+
+-- http://ruder.io/optimizing-gradient-descent/
 
 module Numeric.Opto.Algorithms (
     steepestDescent
+  , Momentum(..), momentum
+  , Nesterov(..), nesterov
   , Adam(..), adam
   , AdaMax(..), adaMax
   ) where
@@ -26,6 +31,43 @@ steepestDescent
     -> OptoM m v a
 steepestDescent lr = fromStatelessM $ \gr -> fmap (-lr,) . gr
 
+newtype Momentum c = Momentum
+    { momentumDecay :: c
+    }
+  deriving (Show, Eq)
+
+instance Fractional c => Default (Momentum c) where
+    def = Momentum { momentumDecay = 0.9 }
+
+momentum
+    :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a)
+    => Momentum c
+    -> c                -- ^ learning rate
+    -> OptoM m v a
+momentum Momentum{..} lr = fromCopying (addZero @a) $ \gr x v -> do
+    g <- gr x
+    let v' = (momentumDecay .* v) .+. (lr .* g)
+    pure (-1, v', v')
+
+newtype Nesterov c = Nesterov
+    { nesterovDecay :: c
+    }
+  deriving (Show, Eq)
+
+instance Fractional c => Default (Nesterov c) where
+    def = Nesterov { nesterovDecay = 0.9 }
+
+nesterov
+    :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a)
+    => Nesterov c
+    -> c                -- ^ learning rate
+    -> OptoM m v a
+nesterov Nesterov{..} lr = fromCopying (addZero @a) $ \gr x v -> do
+    let vDecay = nesterovDecay .* v
+    g <- gr (x .+. ((-1) .* vDecay))
+    let v' = vDecay .+. (lr .* g)
+    pure (-1, v', v')
+
 data Adam c = Adam
     { adamStep    :: !c
     , adamDecay1  :: !c
@@ -34,7 +76,7 @@ data Adam c = Adam
     }
   deriving (Show, Eq)
 
-instance Fractional a => Default (Adam a) where
+instance Fractional c => Default (Adam c) where
     def = Adam { adamStep    = 0.001
                , adamDecay1  = 0.9
                , adamDecay2  = 0.999
@@ -80,7 +122,7 @@ data AdaMax c = AdaMax
     }
   deriving (Show, Eq)
 
-instance Fractional a => Default (AdaMax a) where
+instance Fractional c => Default (AdaMax c) where
     def = AdaMax { adaMaxStep    = 0.002
                  , adaMaxDecay1  = 0.9
                  , adaMaxDecay2  = 0.999
