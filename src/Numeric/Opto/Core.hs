@@ -8,7 +8,7 @@
 
 module Numeric.Opto.Core (
     Diff, Grad, OptoM(..), Opto
-  , fromCopying, fromStateless, fromStatelessM
+  , fromCopying, fromStateless
   , reGrad
   , sampling
   ) where
@@ -51,20 +51,14 @@ fromCopying s0 update =
                 return (c, g)
             }
 
-fromStatelessM
+fromStateless
     :: ScalingInPlace m v c a
     => (Grad m a -> a -> m (c, Diff a))
     -> OptoM m v a
-fromStatelessM update =
+fromStateless update =
     MkOptoM { oInit   = ZPØ
             , oUpdate = \gr _ -> update gr
             }
-
-fromStateless
-    :: ScalingInPlace m v c a
-    => (Grad m a -> a -> (c, Diff a))
-    -> OptoM m v a
-fromStateless update = fromStatelessM (\gr -> pure . update gr)
 
 reGrad
     :: (Grad m a -> Grad m a)

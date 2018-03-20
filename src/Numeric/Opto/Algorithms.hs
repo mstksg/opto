@@ -29,7 +29,7 @@ steepestDescent
     :: forall m v a c. (ScalingInPlace m v c a, Applicative m)
     => c                        -- ^ learning rate
     -> OptoM m v a
-steepestDescent lr = fromStatelessM $ \gr -> fmap (-lr,) . gr
+steepestDescent lr = fromStateless $ \gr -> fmap (-lr,) . gr
 
 newtype Momentum c = Momentum
     { momentumDecay :: c
