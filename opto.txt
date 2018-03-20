@@ -157,12 +157,8 @@ fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s ->
 fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> (c, Diff a)) -> OptoM m v a
 fromStatelessM :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
 reGrad :: (Grad m a -> Grad m a) -> OptoM m v a -> OptoM m v a
-batching :: forall m v a. AdditiveInPlace m v a => Int -> Grad m a -> Grad m a
-batching' :: forall m v a. AdditiveInPlace m v a => Int -> Grad m a -> Grad m a
 type GradSample m r a = r -> Grad m a
 sampling :: MonadSample r m => GradSample m r a -> Grad m a
-batchSampling :: forall r m v a. (MonadSample r m, AdditiveInPlace m v r) => Int -> GradSample m r a -> Grad m a
-batchSampling' :: (MonadSample r m, Additive r) => Int -> GradSample m r a -> Grad m a
 
 module Numeric.Opto.Run
 data RunOpts m a
