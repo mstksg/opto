@@ -167,9 +167,6 @@ RO :: Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
-roGrad' :: () => RunOpts m a -> Applicative m -> Grad m a
-roLimit' :: () => RunOpts m a -> Applicative m -> Maybe Int
-roBatch' :: () => RunOpts m a -> Applicative m -> Maybe Int
 runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
