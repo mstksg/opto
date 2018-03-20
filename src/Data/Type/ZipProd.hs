@@ -9,13 +9,15 @@
 module Data.Type.ZipProd (
     ZipProd(..)
   , onlyZP, headZP, tailZP
-  , traverseZP, mapZP
+  , traverseZP, traverseZP_, mapZP
   , traverseZP1, traverseZP2
+  , zipZipProd
   ) where
 
 import           Data.Kind
 import           Data.Type.Combinator
 import           Data.Type.Product
+import           Data.Type.Conjunction
 
 data ZipProd :: (Type -> Type -> Type) -> [Type] -> [Type] -> Type where
     ZPØ   :: ZipProd f '[] '[]
@@ -42,6 +44,18 @@ traverseZP f = go
     go = \case
       ZPØ      -> pure ZPØ
       x :<< xs -> (:<<) <$> f x <*> go xs
+
+traverseZP_
+    :: forall h f as bs. Applicative h
+    => (forall x y. f x y -> h ())
+    -> ZipProd f as bs
+    -> h ()
+traverseZP_ f = go
+  where
+    go :: ZipProd f cs ds -> h ()
+    go = \case
+      ZPØ      -> pure ()
+      x :<< xs -> f x *> go xs
 
 mapZP
     :: (forall x y. f x y -> g x y)
@@ -72,3 +86,13 @@ traverseZP2 f = go
     go = \case
       ZPØ      -> pure Ø
       x :<< xs -> (:<) <$> f x <*> go xs
+
+zipZipProd
+    :: ZipProd f as bs
+    -> ZipProd g as bs
+    -> ZipProd (Cur (Uncur f :&: Uncur g)) as bs
+zipZipProd = \case
+    ZPØ -> \case
+      ZPØ -> ZPØ
+    x :<< xs -> \case
+      y :<< ys -> Cur (Uncur x :&: Uncur y) :<< zipZipProd xs ys

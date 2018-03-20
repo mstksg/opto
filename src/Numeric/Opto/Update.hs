@@ -6,13 +6,14 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
 module Numeric.Opto.Update (
-    Additive(..), sumAdditive
-  , Scaling(..)
+    Additive(..), sumAdditive, gAdd, gAddZero
+  , Scaling(..), gScale
   , Metric(..)
   , AdditiveInPlace(..), sumAdditiveInPlace
   , ScalingInPlace(..)
@@ -23,6 +24,7 @@ import           Data.Finite
 import           Data.Foldable
 import           Data.Function
 import           GHC.TypeLits
+import           Generics.OneLiner
 import           Numeric.Opto.Ref
 import qualified Data.Vector.Generic               as VG
 import qualified Data.Vector.Generic.Mutable.Sized as SVGM
@@ -43,15 +45,24 @@ class Additive a where
 sumAdditive :: (Additive a, Foldable t) => t a -> a
 sumAdditive = foldl' (.+.) addZero
 
+gAdd :: (ADTRecord a, Constraints a Additive) => a -> a -> a
+gAdd = binaryOp @Additive (.+.)
+
+gAddZero :: (ADTRecord a, Constraints a Additive) => a
+gAddZero = nullaryOp @Additive addZero
+
 class (Num c, Additive a) => Scaling c a | a -> c where
     infixl 7 .*
     (.*)     :: c -> a -> a
     scaleOne :: c
 
-    default (.*) :: (Num a, c ~ a) => c -> a -> a
-    (.*) = (*)
+    default (.*) :: (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
+    (.*) = gScale
     default scaleOne :: Num c => c
     scaleOne = 1
+
+gScale :: forall c a. (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
+gScale c = unaryOp @(Scaling c) (c .*)
 
 class Scaling c a => Metric c a where
     infixl 7 <.>
@@ -89,7 +100,8 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a where
     r .*+= (c, x) = modifyRef' r ((c .* x) .+.)
 
 instance Additive Double
-instance Scaling Double Double
+instance Scaling Double Double where
+    (.*) = (*)
 instance Metric Double Double
 instance Ref m Double v => AdditiveInPlace m v Double
 instance Ref m Double v => ScalingInPlace m v Double Double
@@ -146,3 +158,32 @@ instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
     norm_2   = UH.norm_2 . UH.flatten . H.extract
 instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => AdditiveInPlace m v (H.L n k)
 instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => ScalingInPlace m v Double (H.L n k)
+
+instance (Additive a, Additive b) => Additive (a, b) where
+    (.+.)   = gAdd
+    addZero = gAddZero
+instance (Additive a, Additive b, Additive c) => Additive (a, b, c) where
+    (.+.)   = gAdd
+    addZero = gAddZero
+instance (Additive a, Additive b, Additive c, Additive d) => Additive (a, b, c, d) where
+    (.+.)   = gAdd
+    addZero = gAddZero
+instance (Additive a, Additive b, Additive c, Additive d, Additive e) => Additive (a, b, c, d, e) where
+    (.+.)   = gAdd
+    addZero = gAddZero
+
+instance (Scaling c a, Scaling c b) => Scaling c (a, b)
+instance (Scaling c a, Scaling c b, Scaling c d) => Scaling c (a, b, d)
+instance (Scaling c a, Scaling c b, Scaling c d, Scaling c e) => Scaling c (a, b, d, e)
+instance (Scaling c a, Scaling c b, Scaling c d, Scaling c e, Scaling c f) => Scaling c (a, b, d, e, f)
+
+-- TODO: different refs
+instance (Ref m (a, b) v, Additive a, Additive b) => AdditiveInPlace m v (a, b)
+instance (Ref m (a, b, c) v, Additive a, Additive b, Additive c) => AdditiveInPlace m v (a, b, c)
+instance (Ref m (a, b, c, d) v, Additive a, Additive b, Additive c, Additive d) => AdditiveInPlace m v (a, b, c, d)
+instance (Ref m (a, b, c, d, e) v, Additive a, Additive b, Additive c, Additive d, Additive e) => AdditiveInPlace m v (a, b, c, d, e)
+
+instance (Ref m (a, b) v, Scaling c a, Scaling c b) => ScalingInPlace m v c (a, b)
+instance (Ref m (a, b, d) v, Scaling c a, Scaling c b, Scaling c d) => ScalingInPlace m v c (a, b, d)
+instance (Ref m (a, b, d, e) v, Scaling c a, Scaling c b, Scaling c d, Scaling c e) => ScalingInPlace m v c (a, b, d, e)
+instance (Ref m (a, b, d, e, f) v, Scaling c a, Scaling c b, Scaling c d, Scaling c e, Scaling c f) => ScalingInPlace m v c (a, b, d, e, f)

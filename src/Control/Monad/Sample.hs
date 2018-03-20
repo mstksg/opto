@@ -19,7 +19,6 @@ module Control.Monad.Sample (
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Primitive
-import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State
@@ -29,6 +28,7 @@ import           Data.Functor.Identity
 import           Data.Profunctor
 import           Numeric.Opto.Ref
 
+-- | 'MonadPlus' to imply that an empty pool is empty forever
 class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
     sampleN :: Int -> m [r]

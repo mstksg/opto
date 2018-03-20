@@ -51,12 +51,12 @@ adam
     => Adam c
     -> OptoM m v a
 adam Adam{..} =
-    MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI addZero :<< ZPØ
-                     :: ZipProd (RefInit m)
+    MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl addZero :<< ZPØ
+                     :: ZipProd (RefVal m)
                                 '[c                     ,a,a]
                                 '[MutVar (PrimState m) c,v,v]
             , oUpdate = \gr rSs x -> do
-                RV rT :<< RV rM :<< RV rV :<< ZPØ <- return rSs
+                RVr rT :<< RVr rM :<< RVr rV :<< ZPØ <- return rSs
                 rM .*= adamDecay1
                 rV .*= adamDecay2
                 g <- gr x
@@ -98,12 +98,12 @@ adaMax
     => AdaMax c
     -> OptoM m v a
 adaMax AdaMax{..} =
-    MkOptoM { oInit   = RI 1 :<< RI addZero :<< RI 0 :<< ZPØ
-                     :: ZipProd (RefInit m)
+    MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl 0 :<< ZPØ
+                     :: ZipProd (RefVal m)
                                 '[c,a,c]
                                 '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
             , oUpdate = \gr rSs x -> do
-                RV rT :<< RV rM :<< RV rU :<< ZPØ <- return rSs
+                RVr rT :<< RVr rM :<< RVr rU :<< ZPØ <- return rSs
                 rM .*= adaMaxDecay1
                 g <- gr x
                 rM .*+= (1 - adaMaxDecay1, g)

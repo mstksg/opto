@@ -8,7 +8,7 @@
 
 module Numeric.Opto.Ref (
     Ref(..)
-  , RefInit(..), RefVar(..), RefInits, RefVars
+  , RefVal(..), RefVar(..), RefVals, RefVars
   , initRefs, readRefs, pullRefs
   ) where
 
@@ -17,6 +17,7 @@ import           Data.Functor
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Type.Combinator
+import           Data.Type.Conjunction
 import           Data.Type.Product
 import           Data.Type.ZipProd
 import qualified Data.Vector               as V
@@ -35,26 +36,41 @@ class Monad m => Ref m a v | v -> a where
     modifyRef' :: v -> (a -> a) -> m ()
     modifyRef' v f = void $ updateRef' v ((,()) . f)
     updateRef  :: v -> (a -> (a, b)) -> m b
+    updateRef v f = do
+        (x, y) <- f <$> readRef v
+        writeRef v x
+        return y
     updateRef' :: v -> (a -> (a, b)) -> m b
-    {-# MINIMAL newRef, updateRef, updateRef' #-}
+    updateRef' v f = do
+        (x, y) <- f <$> readRef v
+        x `seq` writeRef v x
+        return y
+    {-# MINIMAL newRef, (writeRef | updateRef, updateRef') #-}
 
-data RefInit :: (Type -> Type) -> Type -> Type -> Type where
-    RI :: Ref m a v => a -> RefInit m a v
+data RefVal :: (Type -> Type) -> Type -> Type -> Type where
+    RVl :: Ref m a v => a -> RefVal m a v
 
 data RefVar :: (Type -> Type) -> Type -> Type -> Type where
-    RV :: Ref m a v => v -> RefVar m a v
+    RVr :: Ref m a v => v -> RefVar m a v
 
-type RefInits m = ZipProd (RefInit m)
-type RefVars  m = ZipProd (RefVar  m)
+type RefVals m = ZipProd (RefVal m)
+type RefVars m = ZipProd (RefVar  m)
 
-initRefs :: Applicative m => ZipProd (RefInit m) as vs -> m (ZipProd (RefVar m) as vs)
-initRefs = traverseZP $ \(RI i) -> RV <$> newRef i
+initRefs :: Applicative m => ZipProd (RefVal m) as vs -> m (ZipProd (RefVar m) as vs)
+initRefs = traverseZP $ \(RVl i) -> RVr <$> newRef i
 
 readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
-readRefs = traverseZP1 $ \(RV v) -> I <$> readRef v
+readRefs = traverseZP1 $ \(RVr v) -> I <$> readRef v
 
-pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefInit m) as vs)
-pullRefs = traverseZP $ \(RV v) -> RI <$> readRef v
+pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefVal m) as vs)
+pullRefs = traverseZP $ \(RVr v) -> RVl <$> readRef v
+
+instance Monad m => Ref m (ZipProd (RefVal m) as vs) (ZipProd (RefVar m) as vs) where
+    newRef   = initRefs
+    readRef  = traverseZP $ \(RVr v) -> RVl <$> readRef v
+    writeRef vs xs = traverseZP_
+        (\(Cur (Uncur (RVr v) :&: Uncur (RVl x))) -> writeRef v x)
+        (zipZipProd vs xs)
 
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
