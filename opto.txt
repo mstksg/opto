@@ -153,12 +153,10 @@ data OptoM :: (Type -> Type) -> Type -> Type -> Type
 [MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefVals m ss sVars), oUpdate :: !(Grad m a -> RefVars m ss sVars -> a -> m (c, Diff a))} -> OptoM m v a
 type Opto s = OptoM (ST s)
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s -> m (c, Diff a, s)) -> OptoM m v a
-fromPure :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s -> (c, Diff a, s)) -> OptoM m v a
 fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> (c, Diff a)) -> OptoM m v a
 fromStatelessM :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
 reGrad :: (Grad m a -> Grad m a) -> OptoM m v a -> OptoM m v a
-type GradSample m r a = r -> Grad m a
-sampling :: MonadSample r m => GradSample m r a -> Grad m a
+sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
 
 module Numeric.Opto.Run
 data RunOpts m a
@@ -174,6 +172,14 @@ evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
 module Numeric.Opto.Algorithms
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
+newtype Momentum c
+Momentum :: c -> Momentum c
+[momentumDecay] :: Momentum c -> c
+momentum :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a) => Momentum c -> c -> OptoM m v a
+newtype Nesterov c
+Nesterov :: c -> Nesterov c
+[nesterovDecay] :: Nesterov c -> c
+nesterov :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a) => Nesterov c -> c -> OptoM m v a
 data Adam c
 Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamStep] :: Adam c -> !c
@@ -192,7 +198,13 @@ instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.AdaMax c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.AdaMax c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Adam c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Adam c)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Algorithms.AdaMax a)
-instance GHC.Real.Fractional a => Data.Default.Class.Default (Numeric.Opto.Algorithms.Adam a)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Nesterov c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Nesterov c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Momentum c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Momentum c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.AdaMax c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.Adam c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.Nesterov c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.Momentum c)
 
 module Numeric.Opto
