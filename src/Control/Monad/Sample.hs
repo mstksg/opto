@@ -1,4 +1,3 @@
-{-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -8,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 module Control.Monad.Sample (
     MonadSample(..)
@@ -19,6 +19,7 @@ module Control.Monad.Sample (
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Primitive
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State

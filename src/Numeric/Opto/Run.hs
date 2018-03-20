@@ -27,13 +27,14 @@ iterateOptoM
     :: forall m v a. Monad m
     => Grad m a                     -- ^ Gradient
     -> (Diff a -> a -> m Bool)      -- ^ Stopping condition
+    -> Maybe Int                    -- ^ step limit
     -> a                            -- ^ Initial value
     -> OptoM m v a                  -- ^ Optimizer
     -> m (a, OptoM m v a)           -- ^ Optimized value with updated optimizer
-iterateOptoM gr stop x0 MkOptoM{..} = do
+iterateOptoM gr stop lim x0 MkOptoM{..} = do
     rSs <- initRefs oInit
     rX <- newRef @m @a @v x0
-    _ <- runMaybeT . many $ do
+    _ <- runMaybeT . repeatLim lim $ do
       (x, step) <- lift $ do
         x <- readRef rX
         (c, g) <- update rSs x
@@ -46,32 +47,39 @@ iterateOptoM gr stop x0 MkOptoM{..} = do
   where
     update = oUpdate gr
 
+repeatLim :: Alternative m => Maybe Int -> m a -> m [a]
+repeatLim Nothing  = many
+repeatLim (Just l) = replicateM l
+
 iterateOptoM_
     :: forall m v a. Monad m
     => Grad m a                     -- ^ Gradient
     -> (Diff a -> a -> m Bool)      -- ^ Stopping condition
+    -> Maybe Int                    -- ^ step limit
     -> a                            -- ^ Initial value
     -> OptoM m v a                  -- ^ Optimizer
     -> m a                          -- ^ Optimized value
-iterateOptoM_ gr stop x0 = fmap fst . iterateOptoM gr stop x0
+iterateOptoM_ gr stop lim x0 = fmap fst . iterateOptoM gr stop lim x0
 
 iterateOpto
     :: (a -> Diff a)                -- ^ Gradient
     -> (Diff a -> a -> Bool)        -- ^ Stopping condition
+    -> Maybe Int                    -- ^ step limit
     -> a                            -- ^ Initial value
     -> (forall s'. Opto s' v a)     -- ^ Pure optimizer
     -> (a, Opto s v a)              -- ^ Optimized value with updated optimizer
-iterateOpto gr stop x0 o0 = runST $ do
-    (y', o') <- iterateOptoM (pure . gr) (\st -> pure . stop st) x0 o0
+iterateOpto gr stop lim x0 o0 = runST $ do
+    (y', o') <- iterateOptoM (pure . gr) (\st -> pure . stop st) lim x0 o0
     return (y', unsafeCoerce o')        -- is this safe?  probably.
 
 iterateOpto_
     :: (a -> Diff a)                -- ^ Gradient
     -> (Diff a -> a -> Bool)        -- ^ Stopping condition
+    -> Maybe Int                    -- ^ step limit
     -> a                            -- ^ Initial value
     -> (forall s'. Opto s' v a)     -- ^ Pure optimizer
     -> a                            -- ^ Optimized value
-iterateOpto_ gr stop x0 o0 = fst $ iterateOpto gr stop x0 o0
+iterateOpto_ gr stop lim x0 o0 = fst $ iterateOpto gr stop lim x0 o0
 
 iterateSamplingUntil
     :: forall m v r a. MonadSample r m

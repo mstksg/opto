@@ -21,7 +21,7 @@ import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
 steepestDescent
-    :: (ScalingInPlace m v c a, Applicative m)
+    :: forall m v a c. (ScalingInPlace m v c a, Applicative m)
     => c                        -- ^ learning rate
     -> OptoM m v a
 steepestDescent lr = fromStatelessM $ \gr -> fmap (-lr,) . gr
@@ -61,7 +61,7 @@ adam Adam{..} =
                 rV .*= adamDecay2
                 g <- gr x
                 rM .*+= (1 - adamDecay1, g)
-                rV .*+= (1 - adamDecay2, g)
+                rV .*+= (1 - adamDecay2, g * g)
                 m ::< v ::< Ø <- readRefs (tailZP rSs)
                 t <- updateRef' rT $ \t0 -> let t1 = t0 + 1
                                             in  (t1, t1)

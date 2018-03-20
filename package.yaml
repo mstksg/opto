@@ -37,16 +37,27 @@ library:
   ghc-options:
   - -Wall
 
-# executables:
-#   opto-exe:
-#     main:                Main.hs
-#     source-dirs:         app
-#     ghc-options:
-#     - -threaded
-#     - -rtsopts
-#     - -with-rtsopts=-N
-#     dependencies:
-#     - opto
+executables:
+  opto-neural:
+    main:                opto-neural.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - opto
+    - filepath
+    - mwc-random
+    - one-liner-instances
+    - mnist-idx
+    - hmatrix
+    - hmatrix-backprop
+    - backprop
+    - lens
+    - time
+    - split
+    - deepseq
 
 # tests:
 #   opto-test:
