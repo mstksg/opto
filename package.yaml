@@ -21,23 +21,24 @@ description:         Please see the README on Github at <https://github.com/mstk
 
 dependencies:
 - base >= 4.7 && < 5
+- data-default
+- hmatrix
 - primitive
 - transformers
-- data-default
-- vector-sized
 - vector
-- profunctors
-- type-combinators
-- typelits-witnesses
-- finite-typelits
-- hmatrix
-- one-liner
 
 ghc-options:
 - -Wall
 
 library:
   source-dirs: src
+  dependencies:
+  - finite-typelits
+  - one-liner
+  - profunctors
+  - type-combinators
+  - typelits-witnesses
+  - vector-sized >= 1.0
 
 executables:
   opto-neural:
@@ -48,18 +49,17 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - opto
+    - backprop
+    - deepseq
     - filepath
+    - hmatrix-backprop
+    - lens
+    - mnist-idx
     - mwc-random
     - one-liner-instances
-    - mnist-idx
-    - hmatrix
-    - hmatrix-backprop
-    - backprop
-    - lens
-    - time
+    - opto
     - split
-    - deepseq
+    - time
 
 # tests:
 #   opto-test:

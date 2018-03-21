@@ -37,18 +37,19 @@ resolver: nightly-2018-03-01
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - .
-- location:
-    git: git@github.com:mstksg/vector-sized.git
-    commit: a1ecdd78536a9fa5f8ffd43e00566d7dad4d902e
-  extra-dep: true
+# - location:
+#     git: git@github.com:mstksg/vector-sized.git
+#     commit: a1ecdd78536a9fa5f8ffd43e00566d7dad4d902e
+#   extra-dep: true
 - location:
     git: git@github.com:haskell/vector.git
-    commit: 7a2f1e33c5eb4d29c724bee1926e9d5f7feeee15
+    commit: 3c51c33e0f9f5ac4abd438503458c76b5b0d2c13
   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-# extra-deps: []
+extra-deps:
+- vector-sized-1.0.0.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
