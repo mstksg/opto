@@ -99,7 +99,7 @@ instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) w
       v `seq` x `seq` V.copy r v
       return x
 
-instance (PrimMonad m, mv ~ VG.Mutable v, PrimState m ~ s, VG.Vector v a)
+instance (PrimMonad m, VG.Mutable v ~ mv, PrimState m ~ s, VG.Vector v a)
       => Ref m (SVG.Vector v n a) (SVG.MVector mv n s a) where
     newRef    = SVG.thaw
     readRef   = SVG.freeze

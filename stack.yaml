@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: nightly-2018-03-01
+resolver: nightly-2018-03-29
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -36,14 +36,22 @@ resolver: nightly-2018-03-01
 # non-dependency (i.e. a user package), and its test suites and benchmarks
 # will not be run. This is useful for tweaking upstream packages.
 packages:
-- .
-# - location:
-#     git: git@github.com:mstksg/vector-sized.git
-#     commit: a1ecdd78536a9fa5f8ffd43e00566d7dad4d902e
-#   extra-dep: true
+- '.'
+- location:
+    git: https://github.com/mstksg/backprop.git
+    commit: 070e4cbcec2a706bd70a0841cdb2079c44f2d452
+  extra-dep: true
+- location:
+    git: https://github.com/mstksg/hmatrix-backprop.git
+    commit: ca78e5a215ca26e13b71474e49daa0d52d2b7b2b
+  extra-dep: true
+- location:
+    git: https://github.com/mstksg/type-combinators.git
+    commit: 13e7d4bd99b1a80b5fdb436a85ee52cfa0ff799f
+  extra-dep: true
 - location:
     git: git@github.com:haskell/vector.git
-    commit: 3c51c33e0f9f5ac4abd438503458c76b5b0d2c13
+    commit: cc5460dfb7a2fb099760155ca46f96c05a1b81b7
   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver

@@ -11,6 +11,7 @@ module Numeric.Opto.Core (
   , fromCopying, fromStateless
   , reGrad
   , sampling
+  , pureGrad, sampling'
   ) where
 
 import           Control.Monad.Primitive
@@ -76,3 +77,15 @@ sampling
 sampling f x = do
     r <- sample
     f r x
+
+pureGrad
+    :: Applicative m
+    => (a -> Diff a)
+    -> Grad m a
+pureGrad f = pure . f
+
+sampling'
+    :: MonadSample r m
+    => (r -> a -> Diff a)
+    -> Grad m a
+sampling' f = sampling (pureGrad . f)
