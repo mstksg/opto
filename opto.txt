@@ -55,28 +55,29 @@ sample :: MonadSample r m => m r
 
 -- | Should never fail
 sampleN :: MonadSample r m => Int -> m [r]
-queue :: (MonadSample r m, Foldable t) => t r -> m ()
 flushSamples :: MonadSample r m => m [r]
 newtype SampleRef v r m a
-SampleRef :: MaybeT (ReaderT v m) a -> SampleRef v r m a
+SR_ :: MaybeT (ReaderT v m) a -> SampleRef v r m a
 [sampleRefReader] :: SampleRef v r m a -> MaybeT (ReaderT v m) a
-runSampleRef :: SampleRef v r m a -> v -> m (Maybe a)
+runSampleRef :: () => SampleRef v r m a -> v -> m Maybe a
 foldSampleRef :: (Ref m [r] v, Foldable t) => SampleRef v r m a -> t r -> m (Maybe a, [r])
-sampleRef :: (v -> m (Maybe a)) -> SampleRef v r m a
 newtype SampleFoldT r m a
-SampleFoldT :: MaybeT (StateT [r] m) a -> SampleFoldT r m a
+SFT_ :: MaybeT (StateT [r] m) a -> SampleFoldT r m a
 [sampleFoldState] :: SampleFoldT r m a -> MaybeT (StateT [r] m) a
+runSampleFoldT :: () => SampleFoldT r m a -> [r] -> m (Maybe a, [r])
 foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
-sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
 type SampleFold r = SampleFoldT r Identity
+runSampleFold :: SampleFold r a -> [r] -> (Maybe a, [r])
 foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
+instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
 instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleFoldT r m)
+instance forall v k (r :: k) (m :: * -> *). Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleRef v r m)
 instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRef v r m)
 instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRef v r m)
 instance forall v k (r :: k) (m :: * -> *). Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRef v r m)
@@ -177,14 +178,10 @@ RO :: Grad m a -> Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
-type RunOptoFunc m v a = a -> OptoM m v a -> m (a, OptoM m v a)
-type EvalOptoFunc m v a = a -> OptoM m v a -> m a
-runOptoMany :: forall m v a. Alternative m => RunOpts m a -> RunOptoFunc m v a
-evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> EvalOptoFunc m v a
-runOpto :: forall m v a. Monad m => RunOpts m a -> RunOptoFunc m v a
-evalOpto :: forall m v a. Monad m => RunOpts m a -> EvalOptoFunc m v a
-iterateRunOptoFunc :: Monad m => RunOptoFunc m v a -> (Int -> m Bool) -> RunOptoFunc m v a
-iterateEvalOptoFunc :: Monad m => EvalOptoFunc m v a -> (Int -> m Bool) -> EvalOptoFunc m v a
+runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
+runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
 module Numeric.Opto.Optimizer
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
