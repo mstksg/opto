@@ -177,14 +177,14 @@ RO :: Grad m a -> Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
-type RunOpto m v a = RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
-type EvalOpto m v a = RunOpts m a -> a -> OptoM m v a -> m a
-runOptoMany :: forall m v a. Alternative m => RunOpto m v a
-evalOptoMany :: forall m v a. Alternative m => EvalOpto m v a
-runOpto :: forall m v a. Monad m => RunOpto m v a
-evalOpto :: forall m v a. Monad m => EvalOpto m v a
-iterateRunOpto :: Monad m => RunOpto m v a -> (Int -> m Bool) -> RunOpto m v a
-iterateEvalOpto :: Monad m => EvalOpto m v a -> (Int -> m Bool) -> EvalOpto m v a
+type RunOptoFunc m v a = a -> OptoM m v a -> m (a, OptoM m v a)
+type EvalOptoFunc m v a = a -> OptoM m v a -> m a
+runOptoMany :: forall m v a. Alternative m => RunOpts m a -> RunOptoFunc m v a
+evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> EvalOptoFunc m v a
+runOpto :: forall m v a. Monad m => RunOpts m a -> RunOptoFunc m v a
+evalOpto :: forall m v a. Monad m => RunOpts m a -> EvalOptoFunc m v a
+iterateRunOptoFunc :: Monad m => RunOptoFunc m v a -> (Int -> m Bool) -> RunOptoFunc m v a
+iterateEvalOptoFunc :: Monad m => EvalOptoFunc m v a -> (Int -> m Bool) -> EvalOptoFunc m v a
 
 module Numeric.Opto.Optimizer
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
