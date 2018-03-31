@@ -16,7 +16,6 @@ module Control.Monad.Sample (
   , SampleRef(..), runSampleRef, foldSampleRef, sampleRef
   , SampleFoldT(..), foldSampleFoldT, sampleFoldT
   , SampleFold, foldSampleFold, sampleFold
-  -- , SampleGen(..), runSampleGen, sampleGen
   ) where
 
 import           Control.Applicative
@@ -109,41 +108,4 @@ instance Monad m => MonadSample r (SampleFoldT r m) where
     sampleN n = sampleFold $
       first Just . splitAt n
     queue xs = sampleFold $ \ys -> (Just (), ys ++ toList xs)
-
--- newtype SampleGen r m a = SampleGen { sampleGenReader :: MaybeT (ReaderT (m r, Int) (StateT Int m)) a }
---     deriving ( Functor
---              , Applicative
---              , Monad
---              , PrimMonad
---              , Alternative
---              , MonadPlus
---              )
-
--- instance MonadTrans (SampleGen r) where
---     lift = SampleGen . lift . lift . lift
-
--- runSampleGen
---     :: Monad m
---     => SampleGen r m a
---     -> m r                  -- ^ gen
---     -> Int                  -- ^ limit
---     -> m (Maybe a)
--- runSampleGen sg g l = flip evalStateT 0
---                     . flip runReaderT (g, l)
---                     . runMaybeT
---                     . sampleGenReader
---                     $ sg
-
--- sampleGen :: Monad m => (r -> Int -> m (Maybe a, Int)) -> SampleGen r m a
--- sampleGen f = SampleGen . MaybeT . ReaderT $ \(g, lim) -> StateT $ \i ->
---     if i < lim
---       then pure (Nothing, i)
---       else do
---         r <- g
---         f r i
-
--- instance Monad m => MonadSample r (SampleGen r m) where
---     sample  = sampleGen $ \r i -> pure (Just r, i + 1)
---     sampleN 0 = pure []
---     sampleN n = ((:) <$> sample <*> sampleN (n - 1)) <|> pure []
 
