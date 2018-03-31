@@ -77,32 +77,32 @@ evalOpto = toEvalOptoFunc . runOpto
 iterateRunOptoFunc
     :: Monad m
     => RunOptoFunc m v a
-    -> (Int -> m Bool)        -- ^ callback, with iteration # and whether or not to continue.  run first
+    -> (Int -> a -> m Bool)        -- ^ callback, with iteration # and whether or not to continue.  run first
     -> RunOptoFunc m v a
 iterateRunOptoFunc ro f = go 0
   where
     go !n !x !o = do
-      c <- f n
+      c <- f n x
       if c
-        then pure (x, o)
-        else do
+        then do
           (x', o') <- ro x o
           go (n + 1) x' o'
+        else pure (x, o)
 
 iterateEvalOptoFunc
     :: Monad m
     => EvalOptoFunc m v a
-    -> (Int -> m Bool)        -- ^ callback, with iteration # and whether or not to continue.  run first
+    -> (Int -> a -> m Bool)        -- ^ callback, with iteration # and whether or not to continue.  run first
     -> EvalOptoFunc m v a
 iterateEvalOptoFunc ro f x0 o = go 0 x0
   where
     go !n !x = do
-      c <- f n
+      c <- f n x
       if c
-        then pure x
-        else do
+        then do
           x' <- ro x o
           go (n + 1) x'
+        else pure x
 
 toEvalOptoFunc :: Functor m => RunOptoFunc m v a -> EvalOptoFunc m v a
 toEvalOptoFunc ro x = fmap fst . ro x

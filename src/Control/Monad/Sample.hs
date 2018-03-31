@@ -18,7 +18,7 @@ module Control.Monad.Sample (
   , SampleRef(.., SampleRef), runSampleRef, foldSampleRef
   , SampleFoldT(.., SampleFoldT), runSampleFoldT, foldSampleFoldT
   , SampleFold, runSampleFold, foldSampleFold, sampleFold
-  , TraceSample(.., TraceSample), runTraceSample
+  , TraceSample(.., TraceSample), runTraceSample, tickTC, setTC, peekTC
   ) where
 
 import           Control.Applicative
@@ -143,6 +143,15 @@ pattern TraceSample :: Functor m => ((Int -> m ()) -> m a) -> TraceSample m a
 pattern TraceSample { runTraceSample } <- (unwrapTS->runTraceSample)
   where
     TraceSample f = TS_ $ ReaderT $ \c -> StateT $ \i -> (,i) <$> f c
+
+tickTC :: Monad m => TraceSample m ()
+tickTC = TS_ . lift $ modify (+ 1)
+
+setTC :: Monad m => Int -> TraceSample m ()
+setTC = TS_ . lift . put
+
+peekTC :: Monad m => TraceSample m Int
+peekTC = TS_ . lift $ get
 
 unwrapTS :: Functor m => TraceSample m a -> (Int -> m ()) -> m a
 unwrapTS = ((fmap fst . flip runStateT 0) .) . runReaderT . traceSampleReader
