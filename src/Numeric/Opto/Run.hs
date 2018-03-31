@@ -8,10 +8,10 @@
 
 module Numeric.Opto.Run (
     RunOpts(.., RO')
-  , RunOpto, EvalOpto
+  , RunOptoFunc, EvalOptoFunc
   , runOptoMany, evalOptoMany
   , runOpto, evalOpto
-  , iterateRunOpto, iterateEvalOpto
+  , iterateRunOptoFunc, iterateEvalOptoFunc
   ) where
 
 import           Control.Applicative
@@ -22,8 +22,8 @@ import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
-type RunOpto m v a  = RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
-type EvalOpto m v a = RunOpts m a -> a -> OptoM m v a -> m a
+type RunOptoFunc m v a  = a -> OptoM m v a -> m (a, OptoM m v a)
+type EvalOptoFunc m v a = a -> OptoM m v a -> m a
 
 data RunOpts m a = RO { roGrad     :: Grad m a
                       , roStopCond :: Diff a -> a -> m Bool
@@ -36,7 +36,7 @@ pattern RO' :: Applicative m => Grad m a -> Maybe Int -> Maybe Int -> RunOpts m 
 pattern RO' gr lim bt <- RO gr _ lim bt where
     RO' gr = RO gr (\_ _ -> pure False)
 
-runOptoMany :: forall m v a. Alternative m => RunOpto m v a
+runOptoMany :: forall m v a. Alternative m => RunOpts m a -> RunOptoFunc m v a
 runOptoMany RO{..} x0 MkOptoM{..} = do
     rSs <- initRefs oInit
     rX <- newRef @m @a @v x0
@@ -52,10 +52,10 @@ runOptoMany RO{..} x0 MkOptoM{..} = do
   where
     update = oUpdate roGrad
 
-evalOptoMany :: forall m v a. Alternative m => EvalOpto m v a
-evalOptoMany ro x0 = fmap fst . runOptoMany ro x0
+evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> EvalOptoFunc m v a
+evalOptoMany = toEvalOptoFunc . runOptoMany
 
-runOpto :: forall m v a. Monad m => RunOpto m v a
+runOpto :: forall m v a. Monad m => RunOpts m a -> RunOptoFunc m v a
 runOpto RO{..} x0 MkOptoM{..} = do
     rSs <- initRefs oInit
     rX <- newRef @m @a @v x0
@@ -71,41 +71,41 @@ runOpto RO{..} x0 MkOptoM{..} = do
   where
     update = oUpdate roGrad
 
-evalOpto :: forall m v a. Monad m => EvalOpto m v a
-evalOpto ro x0 = fmap fst . runOpto ro x0
+evalOpto :: forall m v a. Monad m => RunOpts m a -> EvalOptoFunc m v a
+evalOpto = toEvalOptoFunc . runOpto
 
-iterateRunOpto
+iterateRunOptoFunc
     :: Monad m
-    => RunOpto m v a
+    => RunOptoFunc m v a
     -> (Int -> m Bool)        -- ^ callback, with iteration # and whether or not to continue.  run first
-    -> RunOpto m v a
-iterateRunOpto ro f ropts = go 0
+    -> RunOptoFunc m v a
+iterateRunOptoFunc ro f = go 0
   where
     go !n !x !o = do
       c <- f n
       if c
         then pure (x, o)
         else do
-          (x', o') <- ro ropts x o
+          (x', o') <- ro x o
           go (n + 1) x' o'
 
-iterateEvalOpto
+iterateEvalOptoFunc
     :: Monad m
-    => EvalOpto m v a
+    => EvalOptoFunc m v a
     -> (Int -> m Bool)        -- ^ callback, with iteration # and whether or not to continue.  run first
-    -> EvalOpto m v a
-iterateEvalOpto ro f ropts x0 o = go 0 x0
+    -> EvalOptoFunc m v a
+iterateEvalOptoFunc ro f x0 o = go 0 x0
   where
     go !n !x = do
       c <- f n
       if c
         then pure x
         else do
-          x' <- ro ropts x o
+          x' <- ro x o
           go (n + 1) x'
 
-
--- type RunOpto m v a  = RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+toEvalOptoFunc :: Functor m => RunOptoFunc m v a -> EvalOptoFunc m v a
+toEvalOptoFunc ro x = fmap fst . ro x
 
 optoLoop
     :: forall m v a c. (Alternative m, Monad m, Scaling c a)

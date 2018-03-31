@@ -14,6 +14,7 @@
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Lens hiding                   ((<.>))
+import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.ST
 import           Control.Monad.Trans.Maybe
@@ -106,25 +107,48 @@ main = MWC.withSystemRandom $ \g -> do
     Just test  <- loadMNIST (datadir </> "t10k-images-idx3-ubyte")
                             (datadir </> "t10k-labels-idx1-ubyte")
     putStrLn "Loaded data."
-    net0 <- MWC.uniformR (-0.5, 0.5) g
-    flip evalStateT net0 . forM_ [1..] $ \e -> do
-      train' <- liftIO . fmap V.toList $ MWC.uniformShuffle (V.fromList train) g
-      liftIO $ printf "[Epoch %d]\n" (e :: Int)
+    -- net0 <- MWC.uniformR (-0.5, 0.5) g
+    -- void $ flip foldSampleFoldT [] $ iterateEvalOptoFunc epoch
+    --   (\i -> do
+    --     train' <- liftIO $ do
+    --       V.toList <$> MWC.uniformShuffle (V.fromList train) g
+    --       printf "[Epoch %d]\n" (e :: Int)
+    --     iterateEvalOptoFunc
+    --     return True
+    --   )
 
-      forM_ ([1..] `zip` chunksOf 5000 train') $ \(b, chnk) -> StateT $ \n0 -> do
-        printf "(Batch %d)\n" (b :: Int)
+    -- (evalOptoMany opts)
+      -- (\i -> do
+      --   train' <- liftIO $ do
+      --     V.toList <$> MWC.uniformShuffle (V.fromList train) g
+      --     printf "[Epoch %d]\n" (e :: Int)
+      --   iterateEvalOptoFunc
+      --   return True
+      -- )
+      -- net0 o
+  -- where
+  --   o = adam @_ @(MutVar _ Net) def
+  --   opts = RO' (sampling' g) Nothing Nothing
+  --   g (x, y) = gradBP (netErr (constVar x) (constVar y))
 
-        t0 <- getCurrentTime
-        n' <- evaluate . force $ runST (trainList chnk n0)
-        t1 <- getCurrentTime
-        printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
+    -- flip evalStateT net0 . forM_ [1..] $ \e -> do
+    --   train' <- liftIO . fmap V.toList $ MWC.uniformShuffle (V.fromList train) g
+    --   liftIO $ printf "[Epoch %d]\n" (e :: Int)
 
-        let trainScore = testNet chnk n'
-            testScore  = testNet test n'
-        printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
-        printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
+    --   forM_ ([1..] `zip` chunksOf 5000 train') $ \(b, chnk) -> StateT $ \n0 -> do
+    --     printf "(Batch %d)\n" (b :: Int)
 
-        return ((), n')
+    --     t0 <- getCurrentTime
+    --     n' <- evaluate . force $ runST (trainList chnk n0)
+    --     t1 <- getCurrentTime
+    --     printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
+
+    --     let trainScore = testNet chnk n'
+    --         testScore  = testNet test n'
+    --     printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
+    --     printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
+
+    --     return ((), n')
 
 trainList :: forall s. [(R 784, R 10)] -> Net -> ST s Net
 trainList xs n0 = fmap (fromJust . fst) . flip foldSampleFoldT xs $
