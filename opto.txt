@@ -44,37 +44,60 @@ pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefVal m) a
 instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m (Data.Type.ZipProd.ZipProd (Numeric.Opto.Ref.RefVal m) as vs) (Data.Type.ZipProd.ZipProd (Numeric.Opto.Ref.RefVar m) as vs)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
-instance (Control.Monad.Primitive.PrimMonad m, mv ~ Data.Vector.Generic.Base.Mutable v, Control.Monad.Primitive.PrimState m ~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
+instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v ~ mv, Control.Monad.Primitive.PrimState m ~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
 
 module Control.Monad.Sample
 
--- | <a>MonadPlus</a> to imply that an empty pool is empty forever
+-- | <a>MonadPlus</a> to imply that an empty pool is empty forever unless
+--   you re-fill it first.
 class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
+
+-- | Should never fail
 sampleN :: MonadSample r m => Int -> m [r]
-data SampleRef v r m a
+flushSamples :: MonadSample r m => m [r]
+newtype SampleRef v r m a
+SampleRef :: MaybeT (ReaderT v m) a -> SampleRef v r m a
+[sampleRefReader] :: SampleRef v r m a -> MaybeT (ReaderT v m) a
 runSampleRef :: SampleRef v r m a -> v -> m (Maybe a)
 foldSampleRef :: (Ref m [r] v, Foldable t) => SampleRef v r m a -> t r -> m (Maybe a, [r])
 sampleRef :: (v -> m (Maybe a)) -> SampleRef v r m a
-data SampleFoldT r m a
+newtype SampleFoldT r m a
+SampleFoldT :: MaybeT (StateT [r] m) a -> SampleFoldT r m a
+[sampleFoldState] :: SampleFoldT r m a -> MaybeT (StateT [r] m) a
 foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
 sampleFoldT :: ([r] -> m (Maybe a, [r])) -> SampleFoldT r m a
 type SampleFold r = SampleFoldT r Identity
 foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
+newtype SampleGen r m a
+SampleGen :: MaybeT (ReaderT (m r) m) a -> SampleGen r m a
+[sampleGenReader] :: SampleGen r m a -> MaybeT (ReaderT (m r) m) a
+runSampleGen :: SampleGen r m a -> m r -> m (Maybe a)
+sampleGen :: Monad m => (r -> m (Maybe a)) -> SampleGen r m a
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleGen r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleGen r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleGen r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleGen r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleGen r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleGen r m)
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
 instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRef v r m)
-instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRef v r m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRef v r m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRef v r m)
-instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRef v r m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRef v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRef v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRef v r m)
+instance forall v k (r :: k) (m :: * -> *). Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRef v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRef v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRef v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRef v r m)
+instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleGen r)
+instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleGen r m)
+instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleFoldT r)
 instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleFoldT r m)
+instance forall k v (r :: k). Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleRef v r)
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRef v r m)
 
 module Numeric.Opto.Update
@@ -156,10 +179,12 @@ fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s
 fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
 reGrad :: (Grad m a -> Grad m a) -> OptoM m v a -> OptoM m v a
 sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
+pureGrad :: Applicative m => (a -> Diff a) -> Grad m a
+sampling' :: MonadSample r m => (r -> a -> Diff a) -> Grad m a
 
 module Numeric.Opto.Run
 data RunOpts m a
-RO :: Grad m a -> (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
+RO :: Grad m a -> Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 [roGrad] :: RunOpts m a -> Grad m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
@@ -169,7 +194,7 @@ evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
-module Numeric.Opto.Algorithms
+module Numeric.Opto.Optimizer
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
 newtype Momentum c
 Momentum :: c -> Momentum c
@@ -193,17 +218,17 @@ AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxDecay2] :: AdaMax c -> !c
 [adaMaxEpsilon] :: AdaMax c -> !c
 adaMax :: forall m v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> OptoM m v a
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.AdaMax c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.AdaMax c)
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Adam c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Adam c)
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Nesterov c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Nesterov c)
-instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Algorithms.Momentum c)
-instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Algorithms.Momentum c)
-instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.AdaMax c)
-instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.Adam c)
-instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.Nesterov c)
-instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Algorithms.Momentum c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.AdaMax c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.AdaMax c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adam c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Adam c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Nesterov c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Nesterov c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Momentum c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Momentum c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.AdaMax c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Adam c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Nesterov c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Momentum c)
 
 module Numeric.Opto
