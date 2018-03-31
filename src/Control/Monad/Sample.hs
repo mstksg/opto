@@ -16,7 +16,7 @@ module Control.Monad.Sample (
   , SampleRef(..), runSampleRef, foldSampleRef, sampleRef
   , SampleFoldT(..), foldSampleFoldT, sampleFoldT
   , SampleFold, foldSampleFold, sampleFold
-  , SampleGen(..), runSampleGen, sampleGen
+  -- , SampleGen(..), runSampleGen, sampleGen
   ) where
 
 import           Control.Applicative
@@ -38,6 +38,7 @@ class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
     -- | Should never fail
     sampleN :: Int -> m [r]
+    queue   :: Foldable t => t r -> m ()
 
 flushSamples :: MonadSample r m => m [r]
 flushSamples = many sample
@@ -68,11 +69,13 @@ sampleRef = SampleRef . MaybeT . ReaderT
 
 instance (Monad m, Ref m [r] v) => MonadSample r (SampleRef v r m) where
     sample = sampleRef $ \v ->
-      updateRef' v $  \case
+      updateRef' v $ \case
         []   -> ([], Nothing)
         x:xs -> (xs, Just x )
     sampleN n = sampleRef $ \v ->
       updateRef' v (second Just . splitAt n)
+    queue xs = sampleRef $ \v ->
+      fmap Just . modifyRef' v $ (++ toList xs)
 
 newtype SampleFoldT r m a = SampleFoldT { sampleFoldState :: MaybeT (StateT [r] m) a }
     deriving ( Functor
@@ -105,42 +108,42 @@ instance Monad m => MonadSample r (SampleFoldT r m) where
                                 x:xs -> (Just x , xs)
     sampleN n = sampleFold $
       first Just . splitAt n
+    queue xs = sampleFold $ \ys -> (Just (), ys ++ toList xs)
 
-newtype SampleGen r m a = SampleGen { sampleGenReader :: MaybeT (ReaderT (m r, Int) (StateT Int m)) a }
-    deriving ( Functor
-             , Applicative
-             , Monad
-             , PrimMonad
-             , Alternative
-             , MonadPlus
-             )
+-- newtype SampleGen r m a = SampleGen { sampleGenReader :: MaybeT (ReaderT (m r, Int) (StateT Int m)) a }
+--     deriving ( Functor
+--              , Applicative
+--              , Monad
+--              , PrimMonad
+--              , Alternative
+--              , MonadPlus
+--              )
 
-instance MonadTrans (SampleGen r) where
-    lift = SampleGen . lift . lift . lift
+-- instance MonadTrans (SampleGen r) where
+--     lift = SampleGen . lift . lift . lift
 
-runSampleGen
-    :: Monad m
-    => SampleGen r m a
-    -> m r                  -- ^ gen
-    -> Int                  -- ^ limit
-    -> m (Maybe a)
-runSampleGen sg g l = flip evalStateT 0
-                    . flip runReaderT (g, l)
-                    . runMaybeT
-                    . sampleGenReader
-                    $ sg
+-- runSampleGen
+--     :: Monad m
+--     => SampleGen r m a
+--     -> m r                  -- ^ gen
+--     -> Int                  -- ^ limit
+--     -> m (Maybe a)
+-- runSampleGen sg g l = flip evalStateT 0
+--                     . flip runReaderT (g, l)
+--                     . runMaybeT
+--                     . sampleGenReader
+--                     $ sg
 
-sampleGen :: Monad m => (r -> Int -> m (Maybe a, Int)) -> SampleGen r m a
-sampleGen f = SampleGen . MaybeT . ReaderT $ \(g, lim) -> StateT $ \i ->
-    if i < lim
-      then pure (Nothing, i)
-      else do
-        r <- g
-        f r i
+-- sampleGen :: Monad m => (r -> Int -> m (Maybe a, Int)) -> SampleGen r m a
+-- sampleGen f = SampleGen . MaybeT . ReaderT $ \(g, lim) -> StateT $ \i ->
+--     if i < lim
+--       then pure (Nothing, i)
+--       else do
+--         r <- g
+--         f r i
 
--- | 'sample' and 'sampleN' never fail
-instance Monad m => MonadSample r (SampleGen r m) where
-    sample  = sampleGen $ \r i -> pure (Just r, i + 1)
-    sampleN 0 = pure []
-    sampleN n = ((:) <$> sample <*> sampleN (n - 1)) <|> pure []
+-- instance Monad m => MonadSample r (SampleGen r m) where
+--     sample  = sampleGen $ \r i -> pure (Just r, i + 1)
+--     sampleN 0 = pure []
+--     sampleN n = ((:) <$> sample <*> sampleN (n - 1)) <|> pure []
 
