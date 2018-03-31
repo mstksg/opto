@@ -11,17 +11,20 @@
 {-# LANGUAGE ViewPatterns          #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 
+-- import           Control.Arrow                             (Kleisli(..))
+-- import           Control.Monad.IO.Class
+-- import           Control.Monad.Trans.Class
+-- import           Control.Monad.Trans.State
+-- import           Data.Foldable
+-- import           Data.Monoid.Endomorphism
 import           Control.DeepSeq
 import           Control.Exception
-import           Control.Lens hiding                   ((<.>))
+import           Control.Lens hiding                          ((<.>))
 import           Control.Monad
-import           Control.Monad.IO.Class
 import           Control.Monad.ST
 import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans.State
 import           Data.Bitraversable
 import           Data.Default
-import           Data.Foldable
 import           Data.IDX
 import           Data.List.Split
 import           Data.Maybe
@@ -29,21 +32,21 @@ import           Data.Primitive.MutVar
 import           Data.Time
 import           Data.Traversable
 import           Data.Tuple
-import           GHC.Generics                          (Generic)
+import           GHC.Generics                                 (Generic)
 import           GHC.TypeLits
 import           Numeric.Backprop
-import           Numeric.LinearAlgebra.Static.Backprop
+import           Numeric.LinearAlgebra.Static.Backprop hiding ((&))
 import           Numeric.OneLiner
-import           Numeric.Opto hiding                   ((<.>))
+import           Numeric.Opto hiding                          ((<.>))
 import           System.Environment
-import           System.FilePath hiding                ((<.>))
+import           System.FilePath hiding                       ((<.>))
 import           Text.Printf
-import qualified Data.Vector                           as V
-import qualified Data.Vector.Generic                   as VG
-import qualified Numeric.LinearAlgebra                 as HM
-import qualified Numeric.LinearAlgebra.Static          as H
-import qualified System.Random.MWC                     as MWC
-import qualified System.Random.MWC.Distributions       as MWC
+import qualified Data.Vector                                  as V
+import qualified Data.Vector.Generic                          as VG
+import qualified Numeric.LinearAlgebra                        as HM
+import qualified Numeric.LinearAlgebra.Static                 as H
+import qualified System.Random.MWC                            as MWC
+import qualified System.Random.MWC.Distributions              as MWC
 
 data Net = N { _weights1 :: !(L 250 784)
              , _bias1    :: !(R 250)
@@ -107,53 +110,32 @@ main = MWC.withSystemRandom $ \g -> do
     Just test  <- loadMNIST (datadir </> "t10k-images-idx3-ubyte")
                             (datadir </> "t10k-labels-idx1-ubyte")
     putStrLn "Loaded data."
-    -- net0 <- MWC.uniformR (-0.5, 0.5) g
-    -- void $ flip foldSampleFoldT [] $ iterateEvalOptoFunc epoch
-    --   (\i -> do
-    --     train' <- liftIO $ do
-    --       V.toList <$> MWC.uniformShuffle (V.fromList train) g
-    --       printf "[Epoch %d]\n" (e :: Int)
-    --     iterateEvalOptoFunc
-    --     return True
-    --   )
+    net0 <- MWC.uniformR (-0.5, 0.5) g
 
-    -- (evalOptoMany opts)
-      -- (\i -> do
-      --   train' <- liftIO $ do
-      --     V.toList <$> MWC.uniformShuffle (V.fromList train) g
-      --     printf "[Epoch %d]\n" (e :: Int)
-      --   iterateEvalOptoFunc
-      --   return True
-      -- )
-      -- net0 o
-  -- where
-  --   o = adam @_ @(MutVar _ Net) def
-  --   opts = RO' (sampling' g) Nothing Nothing
-  --   g (x, y) = gradBP (netErr (constVar x) (constVar y))
+    let epoch e net = do
+          printf "[Epoch %d]\n" (e :: Int)
+          train' <- V.toList <$> MWC.uniformShuffle (V.fromList train) g
+          ($ net) . foldr (>=>) pure $
+             zipWith batch [0..] (chunksOf 5000 train')
 
-    -- flip evalStateT net0 . forM_ [1..] $ \e -> do
-    --   train' <- liftIO . fmap V.toList $ MWC.uniformShuffle (V.fromList train) g
-    --   liftIO $ printf "[Epoch %d]\n" (e :: Int)
+        batch b chnk n = do
+          printf "(Batch %d)\n" (b :: Int)
+          t0 <- getCurrentTime
+          n' <- evaluate . force $ runST (trainList chnk n)
+          t1 <- getCurrentTime
+          printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
+          let trainScore = testNet chnk n'
+              testScore  = testNet test n'
+          printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
+          printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
+          return n'
 
-    --   forM_ ([1..] `zip` chunksOf 5000 train') $ \(b, chnk) -> StateT $ \n0 -> do
-    --     printf "(Batch %d)\n" (b :: Int)
-
-    --     t0 <- getCurrentTime
-    --     n' <- evaluate . force $ runST (trainList chnk n0)
-    --     t1 <- getCurrentTime
-    --     printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
-
-    --     let trainScore = testNet chnk n'
-    --         testScore  = testNet test n'
-    --     printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
-    --     printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
-
-    --     return ((), n')
+    void . ($ net0) . foldr (>=>) pure $
+        map epoch [0..]
 
 trainList :: forall s. [(R 784, R 10)] -> Net -> ST s Net
 trainList xs n0 = fmap (fromJust . fst) . flip foldSampleFoldT xs $
     evalOptoMany o n0 (adam @_ @(MutVar s Net) def)
-    -- evalOptoMany o n0 (steepestDescent @_ @(MutVar s Net) 0.02)
   where
     g (x, y) = gradBP (netErr (constVar x) (constVar y))
     o = RO' (sampling' g) Nothing Nothing

@@ -45,6 +45,10 @@ packages:
     git: git@github.com:haskell/vector.git
     commit: cc5460dfb7a2fb099760155ca46f96c05a1b81b7
   extra-dep: true
+# - location:
+#     git: git@github.com:diagrams/monoid-extras.git
+#     commit: 1df9682752dac8c67392d2e80bb09cb7073f3d0b
+#   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
@@ -52,6 +56,7 @@ extra-deps:
 - vector-sized-1.0.0.0
 - backprop-0.1.5.0
 - hmatrix-backprop-0.1.2.0
+# - groups-0.4.1.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

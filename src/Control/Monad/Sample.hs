@@ -18,7 +18,6 @@ module Control.Monad.Sample (
   , SampleRef(.., SampleRef), runSampleRef, foldSampleRef
   , SampleFoldT(.., SampleFoldT), runSampleFoldT, foldSampleFoldT
   , SampleFold, runSampleFold, foldSampleFold, sampleFold
-  , TraceSample(.., TraceSample), runTraceSample, tickTC, setTC, peekTC
   ) where
 
 import           Control.Applicative
@@ -33,7 +32,6 @@ import           Data.Bifunctor
 import           Data.Foldable
 import           Data.Functor.Identity
 import           Data.Profunctor
-import           Data.Traversable
 import           Numeric.Opto.Ref
 
 -- | 'MonadPlus' to imply that an empty pool is empty forever unless you
@@ -42,7 +40,6 @@ class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
     -- | Should never fail
     sampleN :: Int -> m [r]
-    queue   :: Foldable t => t r -> m ()
 
 flushSamples :: MonadSample r m => m [r]
 flushSamples = many sample
@@ -81,8 +78,6 @@ instance (Monad m, Ref m [r] v) => MonadSample r (SampleRef v r m) where
         x:xs -> (xs, Just x )
     sampleN n = SampleRef $ \v ->
       updateRef' v (second Just . splitAt n)
-    queue xs = SampleRef $ \v ->
-      fmap Just . modifyRef' v $ (++ toList xs)
 
 newtype SampleFoldT r m a = SFT_ { sampleFoldState :: MaybeT (StateT [r] m) a }
     deriving ( Functor
@@ -124,44 +119,3 @@ instance Monad m => MonadSample r (SampleFoldT r m) where
                                 x:xs -> (Just x , xs)
     sampleN n = sampleFold $
       first Just . splitAt n
-    queue xs = sampleFold $ \ys -> (Just (), ys ++ toList xs)
-
-newtype TraceSample m a = TS_ { traceSampleReader :: ReaderT (Int -> m ()) (StateT Int m) a }
-    deriving ( Functor
-             , Applicative
-             , Monad
-             , PrimMonad
-             , Alternative
-             , MonadPlus
-             , MonadIO
-             )
-
-instance MonadTrans TraceSample where
-    lift = TS_ . lift . lift
-
-pattern TraceSample :: Functor m => ((Int -> m ()) -> m a) -> TraceSample m a
-pattern TraceSample { runTraceSample } <- (unwrapTS->runTraceSample)
-  where
-    TraceSample f = TS_ $ ReaderT $ \c -> StateT $ \i -> (,i) <$> f c
-
-tickTC :: Monad m => TraceSample m ()
-tickTC = TS_ . lift $ modify (+ 1)
-
-setTC :: Monad m => Int -> TraceSample m ()
-setTC = TS_ . lift . put
-
-peekTC :: Monad m => TraceSample m Int
-peekTC = TS_ . lift $ get
-
-unwrapTS :: Functor m => TraceSample m a -> (Int -> m ()) -> m a
-unwrapTS = ((fmap fst . flip runStateT 0) .) . runReaderT . traceSampleReader
-
-instance MonadSample r m => MonadSample r (TraceSample m) where
-    sample = TS_ . ReaderT $ \c -> StateT $ \i -> do
-      c i
-      (, i + 1) <$> sample
-    sampleN n = TS_ . ReaderT $ \c -> do
-      xs <- lift $ sampleN n
-      for xs $ \x -> StateT $ \i -> (x, i + 1) <$ c i
-    queue = lift . queue
-
