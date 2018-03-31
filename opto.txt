@@ -71,10 +71,10 @@ type SampleFold r = SampleFoldT r Identity
 foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
 newtype SampleGen r m a
-SampleGen :: MaybeT (ReaderT (m r) m) a -> SampleGen r m a
-[sampleGenReader] :: SampleGen r m a -> MaybeT (ReaderT (m r) m) a
-runSampleGen :: SampleGen r m a -> m r -> m (Maybe a)
-sampleGen :: Monad m => (r -> m (Maybe a)) -> SampleGen r m a
+SampleGen :: MaybeT (ReaderT (m r, Int) (StateT Int m)) a -> SampleGen r m a
+[sampleGenReader] :: SampleGen r m a -> MaybeT (ReaderT (m r, Int) (StateT Int m)) a
+runSampleGen :: Monad m => SampleGen r m a -> m r -> Int -> m (Maybe a)
+sampleGen :: Monad m => (r -> Int -> m (Maybe a, Int)) -> SampleGen r m a
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleGen r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleGen r m)
 instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleGen r m)
