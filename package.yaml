@@ -55,11 +55,11 @@ executables:
     - hmatrix-backprop
     - lens
     - mnist-idx
-    - mwc-random
     - one-liner-instances
     - opto
     - split
     - time
+    - mwc-random
 
 # tests:
 #   opto-test:

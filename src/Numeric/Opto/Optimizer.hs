@@ -8,7 +8,7 @@
 
 -- http://ruder.io/optimizing-gradient-descent/
 
-module Numeric.Opto.Algorithms (
+module Numeric.Opto.Optimizer (
     steepestDescent
   , Momentum(..), momentum
   , Nesterov(..), nesterov

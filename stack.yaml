@@ -38,14 +38,6 @@ resolver: nightly-2018-03-29
 packages:
 - '.'
 - location:
-    git: https://github.com/mstksg/backprop.git
-    commit: 070e4cbcec2a706bd70a0841cdb2079c44f2d452
-  extra-dep: true
-- location:
-    git: https://github.com/mstksg/hmatrix-backprop.git
-    commit: ca78e5a215ca26e13b71474e49daa0d52d2b7b2b
-  extra-dep: true
-- location:
     git: https://github.com/mstksg/type-combinators.git
     commit: 13e7d4bd99b1a80b5fdb436a85ee52cfa0ff799f
   extra-dep: true
@@ -58,6 +50,8 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - vector-sized-1.0.0.0
+- backprop-0.1.5.0
+- hmatrix-backprop-0.1.2.0
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

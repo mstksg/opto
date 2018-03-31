@@ -6,20 +6,23 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
 module Control.Monad.Sample (
-    MonadSample(..)
-  , SampleRef, runSampleRef, foldSampleRef, sampleRef
-  , SampleFoldT, foldSampleFoldT, sampleFoldT
+    MonadSample(..), flushSamples
+  , SampleRef(..), runSampleRef, foldSampleRef, sampleRef
+  , SampleFoldT(..), foldSampleFoldT, sampleFoldT
   , SampleFold, foldSampleFold, sampleFold
+  , SampleGen(..), runSampleGen, sampleGen
   ) where
 
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Primitive
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State
@@ -29,10 +32,15 @@ import           Data.Functor.Identity
 import           Data.Profunctor
 import           Numeric.Opto.Ref
 
--- | 'MonadPlus' to imply that an empty pool is empty forever
+-- | 'MonadPlus' to imply that an empty pool is empty forever unless you
+-- re-fill it first.
 class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
+    -- | Should never fail
     sampleN :: Int -> m [r]
+
+flushSamples :: MonadSample r m => m [r]
+flushSamples = many sample
 
 newtype SampleRef v r m a = SampleRef { sampleRefReader :: MaybeT (ReaderT v m) a }
     deriving ( Functor
@@ -42,6 +50,9 @@ newtype SampleRef v r m a = SampleRef { sampleRefReader :: MaybeT (ReaderT v m) 
              , Alternative
              , MonadPlus
              )
+
+instance MonadTrans (SampleRef v r) where
+    lift = SampleRef . lift . lift
 
 runSampleRef :: SampleRef v r m a -> v -> m (Maybe a)
 runSampleRef = runReaderT . runMaybeT . sampleRefReader
@@ -61,7 +72,7 @@ instance (Monad m, Ref m [r] v) => MonadSample r (SampleRef v r m) where
         []   -> ([], Nothing)
         x:xs -> (xs, Just x )
     sampleN n = sampleRef $ \v ->
-      updateRef' v (second (mfilter (not . null) . Just) . splitAt n)
+      updateRef' v (second Just . splitAt n)
 
 newtype SampleFoldT r m a = SampleFoldT { sampleFoldState :: MaybeT (StateT [r] m) a }
     deriving ( Functor
@@ -71,6 +82,9 @@ newtype SampleFoldT r m a = SampleFoldT { sampleFoldState :: MaybeT (StateT [r] 
              , Alternative
              , MonadPlus
              )
+
+instance MonadTrans (SampleFoldT r) where
+    lift = SampleFoldT . lift . lift
 
 foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
 foldSampleFoldT = lmap toList . runStateT . runMaybeT . sampleFoldState
@@ -86,8 +100,35 @@ foldSampleFold sf = runIdentity . foldSampleFoldT sf
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
 sampleFold = SampleFoldT . MaybeT . StateT . fmap return
 
-instance Monad m =>  MonadSample r (SampleFoldT r m) where
+instance Monad m => MonadSample r (SampleFoldT r m) where
     sample = sampleFold $ \case []   -> (Nothing, [])
                                 x:xs -> (Just x , xs)
     sampleN n = sampleFold $
-      first (mfilter (not . null) . Just) . splitAt n
+      first Just . splitAt n
+
+newtype SampleGen r m a = SampleGen { sampleGenReader :: MaybeT (ReaderT (m r) m) a }
+    deriving ( Functor
+             , Applicative
+             , Monad
+             , PrimMonad
+             , Alternative
+             , MonadPlus
+             )
+
+instance MonadTrans (SampleGen r) where
+    lift = SampleGen . lift . lift
+
+runSampleGen
+    :: SampleGen r m a
+    -> m r
+    -> m (Maybe a)
+runSampleGen = runReaderT . runMaybeT . sampleGenReader
+
+sampleGen :: Monad m => (r -> m (Maybe a)) -> SampleGen r m a
+sampleGen = SampleGen . MaybeT . ReaderT . (=<<)
+
+-- | 'sample' and 'sampleN' never fail
+instance Monad m => MonadSample r (SampleGen r m) where
+    sample  = sampleGen $ pure . Just
+    sampleN = flip replicateM sample
+
