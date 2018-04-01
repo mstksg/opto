@@ -28,8 +28,9 @@ import           Numeric.Opto.Update
 steepestDescent
     :: forall m v a c. (ScalingInPlace m v c a, Applicative m)
     => c                        -- ^ learning rate
+    -> Grad m a                 -- ^ gradient
     -> OptoM m v a
-steepestDescent lr = fromStateless $ \gr -> fmap (-lr,) . gr
+steepestDescent lr gr = fromStateless $ fmap (-lr,) . gr
 
 newtype Momentum c = Momentum
     { momentumDecay :: c
@@ -41,10 +42,11 @@ instance Fractional c => Default (Momentum c) where
 
 momentum
     :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a)
-    => Momentum c
+    => Momentum c       -- ^ configuration
     -> c                -- ^ learning rate
+    -> Grad m a         -- ^ gradient
     -> OptoM m v a
-momentum Momentum{..} lr = fromCopying (addZero @a) $ \gr x v -> do
+momentum Momentum{..} lr gr = fromCopying (addZero @a) $ \x v -> do
     g <- gr x
     let v' = (momentumDecay .* v) .+. (lr .* g)
     pure (-1, v', v')
@@ -61,8 +63,9 @@ nesterov
     :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a)
     => Nesterov c       -- ^ configuration
     -> c                -- ^ learning rate
+    -> Grad m a         -- ^ gradient
     -> OptoM m v a
-nesterov Nesterov{..} lr = fromCopying (addZero @a) $ \gr x v -> do
+nesterov Nesterov{..} lr gr = fromCopying (addZero @a) $ \x v -> do
     let vDecay = nesterovDecay .* v
     g <- gr (x .+. ((-1) .* vDecay))
     let v' = vDecay .+. (lr .* g)
@@ -91,13 +94,14 @@ adam
      , PrimMonad m
      )
     => Adam c               -- ^ configuration
+    -> Grad m a             -- ^ gradient
     -> OptoM m v a
-adam Adam{..} =
+adam Adam{..} gr =
     MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl addZero :<< ZPØ
                      :: ZipProd (RefVal m)
                                 '[c                     ,a,a]
                                 '[MutVar (PrimState m) c,v,v]
-            , oUpdate = \gr rSs x -> do
+            , oUpdate = \rSs x -> do
                 RVr rT :<< RVr rM :<< RVr rV :<< ZPØ <- return rSs
                 rM .*= adamDecay1
                 rV .*= adamDecay2
@@ -138,13 +142,14 @@ adaMax
      , PrimMonad m
      )
     => AdaMax c             -- ^ configuration
+    -> Grad m a             -- ^ gradient
     -> OptoM m v a
-adaMax AdaMax{..} =
+adaMax AdaMax{..} gr =
     MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl 0 :<< ZPØ
                      :: ZipProd (RefVal m)
                                 '[c,a,c]
                                 '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
-            , oUpdate = \gr rSs x -> do
+            , oUpdate = \rSs x -> do
                 RVr rT :<< RVr rM :<< RVr rU :<< ZPØ <- return rSs
                 rM .*= adaMaxDecay1
                 g <- gr x

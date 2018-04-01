@@ -19,16 +19,15 @@ import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
-data RunOpts m a = RO { roGrad     :: Grad m a
-                      , roStopCond :: Diff a -> a -> m Bool
+data RunOpts m a = RO { roStopCond :: Diff a -> a -> m Bool
                       , roLimit    :: Maybe Int
                       , roBatch    :: Maybe Int
                       }
 
 -- | Construct a 'RunOpts' with no stopping condition
-pattern RO' :: Applicative m => Grad m a -> Maybe Int -> Maybe Int -> RunOpts m a
-pattern RO' gr lim bt <- RO gr _ lim bt where
-    RO' gr = RO gr (\_ _ -> pure False)
+pattern RO' :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
+pattern RO' lim bt <- RO _ lim bt where
+    RO' = RO (\_ _ -> pure False)
 
 runOptoMany
     :: forall m v a. Alternative m
@@ -44,12 +43,10 @@ runOptoMany RO{..} x0 MkOptoM{..} = do
         (.*+=)
         readRef
         rX
-        (update rSs)
+        (oUpdate rSs)
         roStopCond
     o' <- flip MkOptoM oUpdate <$> pullRefs rSs
     (, o') <$> readRef rX
-  where
-    update = oUpdate roGrad
 
 evalOptoMany
     :: forall m v a. Alternative m
@@ -73,12 +70,11 @@ runOpto RO{..} x0 MkOptoM{..} = do
             (\v -> lift . (v .*+=))
             (lift . readRef)
             rX
-            (lift . update rSs)
+            (lift . oUpdate rSs)
             (\d -> lift . roStopCond d)
     o' <- flip MkOptoM oUpdate <$> pullRefs rSs
     (, o') <$> readRef rX
   where
-    update = oUpdate roGrad
 
 evalOpto
     :: forall m v a. Monad m

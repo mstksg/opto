@@ -9,7 +9,7 @@
 module Numeric.Opto.Core (
     Diff, Grad, OptoM(..), Opto
   , fromCopying, fromStateless
-  , reGrad
+  -- , reGrad
   , sampling
   , pureGrad, sampling'
   ) where
@@ -29,8 +29,7 @@ type Grad m a = a -> m (Diff a)
 data OptoM :: (Type -> Type) -> Type -> Type -> Type where
     MkOptoM :: ScalingInPlace m v c a
             => { oInit   :: !( RefVals m ss sVars )
-               , oUpdate :: !( Grad m a
-                            -> RefVars m ss sVars
+               , oUpdate :: !( RefVars m ss sVars
                             -> a
                             -> m (c, Diff a)
                              )
@@ -42,33 +41,33 @@ type Opto s = OptoM (ST s)
 fromCopying
     :: (PrimMonad m, ScalingInPlace m v c a)
     => s
-    -> (Grad m a -> a -> s -> m (c, Diff a, s))
+    -> (a -> s -> m (c, Diff a, s))
     -> OptoM m v a
 fromCopying s0 update =
     MkOptoM { oInit   = onlyZP (RVl s0)
-            , oUpdate = \gr (headZP->RVr rS) x -> do
-                (c, g, s) <- update gr x =<< readMutVar rS
+            , oUpdate = \(headZP->RVr rS) x -> do
+                (c, g, s) <- update x =<< readMutVar rS
                 writeMutVar rS s
                 return (c, g)
             }
 
 fromStateless
     :: ScalingInPlace m v c a
-    => (Grad m a -> a -> m (c, Diff a))
+    => (a -> m (c, Diff a))
     -> OptoM m v a
 fromStateless update =
     MkOptoM { oInit   = ZPØ
-            , oUpdate = \gr _ -> update gr
+            , oUpdate = \_ -> update
             }
 
-reGrad
-    :: (Grad m a -> Grad m a)
-    -> OptoM m v a
-    -> OptoM m v a
-reGrad f MkOptoM{..} =
-    MkOptoM { oInit   = oInit
-            , oUpdate = \gr -> oUpdate (f gr)
-            }
+-- reGrad
+--     :: (Grad m a -> Grad m a)
+--     -> OptoM m v a
+--     -> OptoM m v a
+-- reGrad f MkOptoM{..} =
+--     MkOptoM { oInit   = oInit
+--             , oUpdate = \gr -> oUpdate (f gr)
+--             }
 
 sampling
     :: MonadSample r m
