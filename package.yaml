@@ -39,6 +39,7 @@ library:
   - type-combinators
   - typelits-witnesses
   - vector-sized >= 1.0
+  - conduit
 
 executables:
   opto-neural:

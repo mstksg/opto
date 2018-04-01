@@ -29,6 +29,7 @@ import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State
 import           Data.Bifunctor
+import           Data.Conduit
 import           Data.Foldable
 import           Data.Functor.Identity
 import           Data.Profunctor
@@ -40,6 +41,8 @@ class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
     -- | Should never fail
     sampleN :: Int -> m [r]
+    sampleN 0 = pure []
+    sampleN n = ((:) <$> sample <*> sampleN (n - 1)) <|> pure []
 
 flushSamples :: MonadSample r m => m [r]
 flushSamples = many sample
@@ -119,3 +122,6 @@ instance Monad m => MonadSample r (SampleFoldT r m) where
                                 x:xs -> (Just x , xs)
     sampleN n = sampleFold $
       first Just . splitAt n
+
+instance Monad m => MonadSample r (MaybeT (ConduitT r o m)) where
+    sample = MaybeT await

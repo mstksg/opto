@@ -59,7 +59,7 @@ instance Fractional c => Default (Nesterov c) where
 
 nesterov
     :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a)
-    => Nesterov c
+    => Nesterov c       -- ^ configuration
     -> c                -- ^ learning rate
     -> OptoM m v a
 nesterov Nesterov{..} lr = fromCopying (addZero @a) $ \gr x v -> do
@@ -90,7 +90,7 @@ adam
      , ScalingInPlace m v c a
      , PrimMonad m
      )
-    => Adam c
+    => Adam c               -- ^ configuration
     -> OptoM m v a
 adam Adam{..} =
     MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl addZero :<< ZPØ
@@ -137,7 +137,7 @@ adaMax
      , ScalingInPlace m v c a
      , PrimMonad m
      )
-    => AdaMax c
+    => AdaMax c             -- ^ configuration
     -> OptoM m v a
 adaMax AdaMax{..} =
     MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl 0 :<< ZPØ
