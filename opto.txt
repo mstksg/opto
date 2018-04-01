@@ -54,7 +54,7 @@ class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
 
 -- | Should never fail
-sampleN :: MonadSample r m => Int -> m [r]
+sampleN :: (MonadSample r m, Vector v r) => Int -> m (v r)
 flushSamples :: MonadSample r m => m [r]
 newtype SampleRef v r m a
 SR_ :: MaybeT (ReaderT v m) a -> SampleRef v r m a
@@ -70,6 +70,18 @@ type SampleFold r = SampleFoldT r Identity
 runSampleFold :: SampleFold r a -> [r] -> (Maybe a, [r])
 foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
+newtype SampleConduit i o m a
+SC_ :: MaybeT (ConduitT i o m) a -> SampleConduit i o m a
+[sampleConduitMaybeT] :: SampleConduit i o m a -> MaybeT (ConduitT i o m) a
+runSampleConduit :: () => SampleConduit i o m a -> ConduitT i o m Maybe a
+sampleReservoir :: forall m v r. (PrimMonad m, MonadSample r m, Vector v r) => Int -> Gen (PrimState m) -> m (v r)
+instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleConduit i o m)
+instance GHC.Base.MonadPlus (Control.Monad.Sample.SampleConduit i o m)
+instance GHC.Base.Alternative (Control.Monad.Sample.SampleConduit i o m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleConduit i o m)
+instance GHC.Base.Monad (Control.Monad.Sample.SampleConduit i o m)
+instance GHC.Base.Applicative (Control.Monad.Sample.SampleConduit i o m)
+instance GHC.Base.Functor (Control.Monad.Sample.SampleConduit i o m)
 instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
 instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
@@ -84,11 +96,12 @@ instance forall v k (r :: k) (m :: * -> *). Control.Monad.Primitive.PrimMonad m 
 instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRef v r m)
 instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRef v r m)
 instance forall v k (r :: k) (m :: * -> *). GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRef v r m)
+instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleConduit i o)
+instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample i (Control.Monad.Sample.SampleConduit i o m)
 instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleFoldT r)
 instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleFoldT r m)
 instance forall k v (r :: k). Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleRef v r)
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRef v r m)
-instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Trans.Maybe.MaybeT (Data.Conduit.Internal.Conduit.ConduitT r o m))
 
 module Numeric.Opto.Update
 class Additive a
@@ -181,6 +194,26 @@ runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a ->
 evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
+
+module Numeric.Opto.Run.Conduit
+runOptoConduit :: Monad m => RunOpts (SampleConduit i a m) a -> a -> OptoM (SampleConduit i a m) v a -> ConduitT i a m (OptoM (SampleConduit i a m) v a)
+
+-- | Outputs a shuffled version of the input stream. Keeps entire input
+--   stream in memory.
+--   
+--   NOTE: Pulls the input stream first before outputting anything.
+shuffling :: PrimMonad m => Gen (PrimState m) -> ConduitT a a m ()
+
+-- | Takes the first N items out of the input stream, shuffles them
+--   in-memory, and outputs the shuffled result.
+--   
+--   Leaves the rest of the items in the stream.
+--   
+--   Use <a>forever</a> to repeat multiple times until the stream is
+--   exhausted.
+shufflingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
+sinkSampleReservoir :: forall m v a o. (PrimMonad m, Vector v a) => Int -> Gen (PrimState m) -> ConduitT a o m (v a)
+samplingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
 
 module Numeric.Opto.Optimizer
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> Grad m a -> OptoM m v a
