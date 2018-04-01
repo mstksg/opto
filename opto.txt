@@ -88,6 +88,7 @@ instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleFoldT 
 instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleFoldT r m)
 instance forall k v (r :: k). Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleRef v r)
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRef v r m)
+instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Trans.Maybe.MaybeT (Data.Conduit.Internal.Conduit.ConduitT r o m))
 
 module Numeric.Opto.Update
 class Additive a
@@ -162,19 +163,17 @@ module Numeric.Opto.Core
 type Diff a = a
 type Grad m a = a -> m (Diff a)
 data OptoM :: (Type -> Type) -> Type -> Type -> Type
-[MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefVals m ss sVars), oUpdate :: !(Grad m a -> RefVars m ss sVars -> a -> m (c, Diff a))} -> OptoM m v a
+[MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefVals m ss sVars), oUpdate :: !(RefVars m ss sVars -> a -> m (c, Diff a))} -> OptoM m v a
 type Opto s = OptoM (ST s)
-fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (Grad m a -> a -> s -> m (c, Diff a, s)) -> OptoM m v a
-fromStateless :: ScalingInPlace m v c a => (Grad m a -> a -> m (c, Diff a)) -> OptoM m v a
-reGrad :: (Grad m a -> Grad m a) -> OptoM m v a -> OptoM m v a
+fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> m (c, Diff a, s)) -> OptoM m v a
+fromStateless :: ScalingInPlace m v c a => (a -> m (c, Diff a)) -> OptoM m v a
 sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
 pureGrad :: Applicative m => (a -> Diff a) -> Grad m a
 sampling' :: MonadSample r m => (r -> a -> Diff a) -> Grad m a
 
 module Numeric.Opto.Run
 data RunOpts m a
-RO :: Grad m a -> Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
-[roGrad] :: RunOpts m a -> Grad m a
+RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
@@ -184,29 +183,29 @@ runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, Opt
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
 module Numeric.Opto.Optimizer
-steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> OptoM m v a
+steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> Grad m a -> OptoM m v a
 newtype Momentum c
 Momentum :: c -> Momentum c
 [momentumDecay] :: Momentum c -> c
-momentum :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a) => Momentum c -> c -> OptoM m v a
+momentum :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a) => Momentum c -> c -> Grad m a -> OptoM m v a
 newtype Nesterov c
 Nesterov :: c -> Nesterov c
 [nesterovDecay] :: Nesterov c -> c
-nesterov :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a) => Nesterov c -> c -> OptoM m v a
+nesterov :: forall m v a c. (PrimMonad m, ScalingInPlace m v c a) => Nesterov c -> c -> Grad m a -> OptoM m v a
 data Adam c
 Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamStep] :: Adam c -> !c
 [adamDecay1] :: Adam c -> !c
 [adamDecay2] :: Adam c -> !c
 [adamEpsilon] :: Adam c -> !c
-adam :: forall m v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, PrimMonad m) => Adam c -> OptoM m v a
+adam :: forall m v a c. (RealFloat c, Floating a, ScalingInPlace m v c a, PrimMonad m) => Adam c -> Grad m a -> OptoM m v a
 data AdaMax c
 AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxStep] :: AdaMax c -> !c
 [adaMaxDecay1] :: AdaMax c -> !c
 [adaMaxDecay2] :: AdaMax c -> !c
 [adaMaxEpsilon] :: AdaMax c -> !c
-adaMax :: forall m v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> OptoM m v a
+adaMax :: forall m v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> Grad m a -> OptoM m v a
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adam c)
