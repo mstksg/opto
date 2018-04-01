@@ -6,6 +6,7 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
@@ -18,6 +19,8 @@ module Control.Monad.Sample (
   , SampleRef(.., SampleRef), runSampleRef, foldSampleRef
   , SampleFoldT(.., SampleFoldT), runSampleFoldT, foldSampleFoldT
   , SampleFold, runSampleFold, foldSampleFold, sampleFold
+  , SampleConduit(.., SampleConduit), runSampleConduit
+  , sampleReservoir
   ) where
 
 import           Control.Applicative
@@ -34,15 +37,22 @@ import           Data.Foldable
 import           Data.Functor.Identity
 import           Data.Profunctor
 import           Numeric.Opto.Ref
+import qualified Data.Vector                 as V
+import qualified Data.Vector.Generic         as VG
+import qualified Data.Vector.Generic.Mutable as VG
+import qualified Data.Vector.Mutable         as V
+import qualified System.Random.MWC           as MWC
 
 -- | 'MonadPlus' to imply that an empty pool is empty forever unless you
 -- re-fill it first.
 class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
     -- | Should never fail
-    sampleN :: Int -> m [r]
-    sampleN 0 = pure []
-    sampleN n = ((:) <$> sample <*> sampleN (n - 1)) <|> pure []
+    sampleN :: VG.Vector v r => Int -> m (v r)
+    sampleN = fmap VG.fromList . go
+      where
+        go 0 = pure []
+        go n = ((:) <$> sample <*> go (n - 1)) <|> pure []
 
 flushSamples :: MonadSample r m => m [r]
 flushSamples = many sample
@@ -80,7 +90,7 @@ instance (Monad m, Ref m [r] v) => MonadSample r (SampleRef v r m) where
         []   -> ([], Nothing)
         x:xs -> (xs, Just x )
     sampleN n = SampleRef $ \v ->
-      updateRef' v (second Just . splitAt n)
+      updateRef' v (second (Just . VG.fromList) . splitAt n)
 
 newtype SampleFoldT r m a = SFT_ { sampleFoldState :: MaybeT (StateT [r] m) a }
     deriving ( Functor
@@ -121,7 +131,39 @@ instance Monad m => MonadSample r (SampleFoldT r m) where
     sample = sampleFold $ \case []   -> (Nothing, [])
                                 x:xs -> (Just x , xs)
     sampleN n = sampleFold $
-      first Just . splitAt n
+      first (Just . VG.fromList) . splitAt n
 
-instance Monad m => MonadSample r (MaybeT (ConduitT r o m)) where
-    sample = MaybeT await
+newtype SampleConduit i o m a = SC_ { sampleConduitMaybeT :: MaybeT (ConduitT i o m) a }
+    deriving ( Functor
+             , Applicative
+             , Monad
+             , PrimMonad
+             , Alternative
+             , MonadPlus
+             , MonadIO
+             )
+
+instance MonadTrans (SampleConduit i o) where
+    lift = SC_ . lift . lift
+
+pattern SampleConduit :: ConduitT i o m (Maybe a) -> SampleConduit i o m a
+pattern SampleConduit { runSampleConduit } <- (runMaybeT.sampleConduitMaybeT->runSampleConduit)
+  where
+    SampleConduit = SC_ . MaybeT
+
+instance Monad m => MonadSample i (SampleConduit i o m) where
+    sample = SC_ $ MaybeT await
+
+sampleReservoir
+    :: forall m v r. (PrimMonad m, MonadSample r m, VG.Vector v r)
+    => Int
+    -> MWC.Gen (PrimState m)
+    -> m (v r)
+sampleReservoir k g = do
+    xs <- VG.thaw =<< sampleN k
+    void . optional . for_ [k+1 ..] $ \i -> do
+      x <- sample
+      j <- MWC.uniformR (1, i) g
+      when (j <= k) $
+        VG.unsafeWrite xs (j-1) x
+    VG.freeze xs

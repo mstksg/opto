@@ -26,6 +26,7 @@ dependencies:
 - primitive
 - transformers
 - vector
+- mwc-random
 
 ghc-options:
 - -Wall
@@ -60,7 +61,6 @@ executables:
     - opto
     - split
     - time
-    - mwc-random
 
 # tests:
 #   opto-test:
