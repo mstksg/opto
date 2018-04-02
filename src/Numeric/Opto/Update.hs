@@ -14,7 +14,7 @@
 module Numeric.Opto.Update (
     Additive(..), sumAdditive, gAdd, gAddZero
   , Scaling(..), gScale
-  , Metric(..)
+  , Metric(..), gNorm_inf, gNorm_0, gNorm_1, gNorm_2, gQuadrance
   , AdditiveInPlace(..), sumAdditiveInPlace
   , ScalingInPlace(..)
   ) where
@@ -23,6 +23,8 @@ import           Control.Monad.Primitive
 import           Data.Finite
 import           Data.Foldable
 import           Data.Function
+import           Data.Maybe
+import           Data.Semigroup
 import           GHC.TypeLits
 import           Generics.OneLiner
 import           Numeric.Opto.Ref
@@ -66,22 +68,52 @@ gScale c = unaryOp @(Scaling c) (c .*)
 
 class Scaling c a => Metric c a where
     infixl 7 <.>
+    -- | Sum of component-wise product
     (<.>)    :: a -> a -> c
+    -- | Maximum absolute component
     norm_inf :: a -> c
+    -- | Number of non-zero components
     norm_0   :: a -> c
+    -- | Sum of absolute components
     norm_1   :: a -> c
-    norm_2   :: a -> c
+    -- | Square root of sum of squared components
+    norm_2    :: a -> c
+    -- | Sum of squared components
+    quadrance :: a -> c
 
-    default (<.>) :: (Num a, c ~ a) => a -> a -> c
-    (<.>) = (*)
-    default norm_inf :: (Num a, c ~ a) => a -> c
-    norm_inf = abs
-    default norm_0 :: (Num a, c ~ a) => a -> c
-    norm_0 = abs
-    default norm_1 :: (Num a, c ~ a) => a -> c
-    norm_1 = abs
-    default norm_2 :: (Num a, c ~ a) => a -> c
-    norm_2 = abs
+    default (<.>) :: (ADT a, Constraints a (Metric c)) => a -> a -> c
+    (<.>) = gDot
+    default norm_inf :: (ADT a, Constraints a (Metric c), Ord c) => a -> c
+    norm_inf = gNorm_inf
+    default norm_0 :: (ADT a, Constraints a (Metric c)) => a -> c
+    norm_0 = gNorm_0
+    default norm_1 :: (ADT a, Constraints a (Metric c)) => a -> c
+    norm_1 = gNorm_1
+    default norm_2 :: Floating c => a -> c
+    norm_2 = sqrt . quadrance
+    default quadrance :: (ADT a, Constraints a (Metric c)) => a -> c
+    quadrance = gQuadrance
+
+gDot :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> a -> c
+gDot x = getSum . mzipWith @(Metric c) (\x' -> Sum . (x' <.>)) x
+
+gNorm_inf :: forall c a. (ADT a, Constraints a (Metric c), Ord c) => a -> c
+gNorm_inf = getMax
+          . fromMaybe (error "norm_inf: Divergent infinity norm")
+          . getOption
+          . gfoldMap @(Metric c) (Option . Just . Max . abs . norm_inf)
+
+gNorm_0 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
+gNorm_0 = getSum . gfoldMap @(Metric c) (Sum . norm_0)
+
+gNorm_1 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
+gNorm_1 = getSum . gfoldMap @(Metric c) (Sum . norm_1)
+
+gNorm_2 :: forall c a. (ADT a, Constraints a (Metric c), Floating c) => a -> c
+gNorm_2 = sqrt . gQuadrance
+
+gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
+gQuadrance = getSum . gfoldMap @(Metric c) (Sum . quadrance)
 
 class (Ref m a v, Additive a) => AdditiveInPlace m v a where
     infix 4 .+.=
@@ -102,7 +134,14 @@ class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a where
 instance Additive Double
 instance Scaling Double Double where
     (.*) = (*)
-instance Metric Double Double
+instance Metric Double Double where
+    (<.>)     = (*)
+    norm_inf  = abs
+    norm_0    = abs . signum
+    norm_1    = abs
+    norm_2    = abs
+    quadrance = (^ (2 :: Int))
+
 instance Ref m Double v => AdditiveInPlace m v Double
 instance Ref m Double v => ScalingInPlace m v Double Double
 
@@ -114,12 +153,12 @@ instance (Num a, VG.Vector v a, KnownNat n) => Scaling a (SVG.Vector v n a) wher
     c .* xs  = SVG.map (c *) xs
     scaleOne = 1
 
-instance (Num a, Ord a, VG.Vector v a, KnownNat n) => Metric a (SVG.Vector v n a) where
+instance (Floating a, Ord a, VG.Vector v a, KnownNat n) => Metric a (SVG.Vector v n a) where
     xs <.> ys = SVG.sum (xs * ys)
     norm_inf  = SVG.foldl' (\x y -> max (abs x) y) 0
     norm_0    = fromIntegral . SVG.length
     norm_1    = SVG.sum . abs
-    norm_2    = SVG.sum . (^ (2 :: Int))
+    quadrance = SVG.sum . (^ (2 :: Int))
 
 instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
       => AdditiveInPlace m (SVG.MVector mv n s a) (SVG.Vector v n a) where
@@ -143,6 +182,7 @@ instance KnownNat n => Metric Double (H.R n) where
     norm_0   = H.norm_0
     norm_1   = H.norm_1
     norm_2   = H.norm_2
+    quadrance = (**2) . H.norm_2
 instance (KnownNat n, Ref m (H.R n) v) => AdditiveInPlace m v (H.R n)
 instance (KnownNat n, Ref m (H.R n) v) => ScalingInPlace m v Double (H.R n)
 
@@ -151,11 +191,12 @@ instance (KnownNat n, KnownNat m) => Scaling Double (H.L n m) where
     c .* xs  = H.konst c * xs
     scaleOne = 1
 instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
-    (<.>)    = (UH.<.>) `on` UH.flatten . H.extract
-    norm_inf = UH.maxElement . H.extract . abs
-    norm_0   = fromIntegral . uncurry (*) . H.size
-    norm_1   = UH.sumElements . H.extract
-    norm_2   = UH.norm_2 . UH.flatten . H.extract
+    (<.>)     = (UH.<.>) `on` UH.flatten . H.extract
+    norm_inf  = UH.maxElement . H.extract . abs
+    norm_0    = fromIntegral . uncurry (*) . H.size
+    norm_1    = UH.sumElements . H.extract
+    norm_2    = UH.norm_2 . UH.flatten . H.extract
+    quadrance = (**2) . norm_2
 instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => AdditiveInPlace m v (H.L n k)
 instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => ScalingInPlace m v Double (H.L n k)
 
