@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE ViewPatterns          #-}
@@ -13,8 +14,6 @@
 
 -- import           Control.Arrow                             (Kleisli(..))
 -- import           Control.Monad.ST
--- import           Control.Monad.Trans.Class
--- import           Control.Monad.Trans.State
 -- import           Data.Foldable
 -- import           Data.List.Split
 -- import           Data.Maybe
@@ -26,7 +25,9 @@ import           Control.Exception
 import           Control.Lens hiding                          ((<.>))
 import           Control.Monad
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
+import           Control.Monad.Trans.State
 import           Data.Bitraversable
 import           Data.Conduit
 import           Data.Default
@@ -117,22 +118,32 @@ main = MWC.withSystemRandom $ \g -> do
     let report n b = do
           yield $ printf "(Batch %d)\n" (b :: Int)
           t0 <- liftIO getCurrentTime
-          replicateM_ (n - 1) await
-          x <- mapM (liftIO . evaluate . force) =<< await
+          C.drop (n - 1)
+          net' <- mapM (liftIO . evaluate . force) =<< await
           t1 <- liftIO getCurrentTime
-          case x of
+          case net' of
             Nothing  -> yield "Done!\n"
             Just net -> do
-              yield $ printf "Trained on %d points in %s.\n" (n :: Int) (show (t1 `diffUTCTime` t0))
-              let testScore  = testNet test net
+              chnk <- lift . state $ (,[])
+              yield $ printf "Trained on %d points in %s.\n"
+                             (length chnk)
+                             (show (t1 `diffUTCTime` t0))
+              let trainScore = testNet chnk net
+                  testScore  = testNet test net
+              yield $ printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
               yield $ printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
 
-    runConduit $ forever (C.yieldMany train .| shuffling g)
-              .| void (runOptoConduit o net0 (adam @_ @(MutVar _ Net) def (sampling' gr)))
-              .| mapM_ (report 2500) [0..]
-              .| C.map T.pack
-              .| C.encodeUtf8
-              .| C.stdout
+    flip evalStateT []
+        . runConduit
+        $ forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
+                          >> C.yieldMany train .| shuffling g
+                      )
+       .| C.iterM (modify . (:))      -- add to state stack for train eval
+       .| void (runOptoConduit o net0 (adam @_ @(MutVar _ Net) def (sampling' gr)))
+       .| mapM_ (report 2500) [0..]
+       .| C.map T.pack
+       .| C.encodeUtf8
+       .| C.stdout
 
     -- let epoch e net = do
     --       printf "[Epoch %d]\n" (e :: Int)

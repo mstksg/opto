@@ -124,7 +124,7 @@ foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
 foldSampleFold sf = runIdentity . foldSampleFoldT sf
 
 sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
-sampleFold = SFT_ . MaybeT . StateT . fmap return
+sampleFold = SampleFoldT . fmap return
 
 instance Monad m => MonadSample r (SampleFoldT r m) where
     sample = sampleFold $ \case []   -> (Nothing, [])
@@ -151,7 +151,7 @@ pattern SampleConduit { runSampleConduit } <- (runMaybeT.sampleConduitMaybeT->ru
     SampleConduit = SC_ . MaybeT
 
 instance Monad m => MonadSample i (SampleConduit i o m) where
-    sample = SC_ $ MaybeT await
+    sample  = SampleConduit await
 
 -- | Pulls samples until it cannot pull any more, and returns N shuffled
 -- items from the pool.  Is O(N) memory.
