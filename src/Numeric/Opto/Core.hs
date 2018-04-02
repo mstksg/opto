@@ -9,9 +9,8 @@
 module Numeric.Opto.Core (
     Diff, Grad, OptoM(..), Opto
   , fromCopying, fromStateless
-  -- , reGrad
   , sampling
-  , pureGrad, sampling'
+  , pureGrad, pureSampling
   ) where
 
 import           Control.Monad.Primitive
@@ -60,15 +59,6 @@ fromStateless update =
             , oUpdate = \_ -> update
             }
 
--- reGrad
---     :: (Grad m a -> Grad m a)
---     -> OptoM m v a
---     -> OptoM m v a
--- reGrad f MkOptoM{..} =
---     MkOptoM { oInit   = oInit
---             , oUpdate = \gr -> oUpdate (f gr)
---             }
-
 sampling
     :: MonadSample r m
     => (r -> Grad m a)
@@ -83,8 +73,8 @@ pureGrad
     -> Grad m a
 pureGrad f = pure . f
 
-sampling'
+pureSampling
     :: MonadSample r m
     => (r -> a -> Diff a)
     -> Grad m a
-sampling' f = sampling (pureGrad . f)
+pureSampling f = sampling (pureGrad . f)

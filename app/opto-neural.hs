@@ -12,14 +12,6 @@
 {-# LANGUAGE ViewPatterns          #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 
--- import           Control.Arrow                             (Kleisli(..))
--- import           Control.Monad.ST
--- import           Data.Foldable
--- import           Data.List.Split
--- import           Data.Maybe
--- import           Data.Monoid.Endomorphism
--- import qualified Data.Vector                               as V
--- import qualified System.Random.MWC.Distributions           as MWC
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Lens hiding                          ((<.>))
@@ -139,42 +131,14 @@ main = MWC.withSystemRandom $ \g -> do
                           >> C.yieldMany train .| shuffling g
                       )
        .| C.iterM (modify . (:))      -- add to state stack for train eval
-       .| void (runOptoConduit o net0 (adam @_ @(MutVar _ Net) def (sampling' gr)))
+       .| void (runOptoConduit o net0 (adam @_ @(MutVar _ Net) def (pureSampling gr)))
        .| mapM_ (report 2500) [0..]
        .| C.map T.pack
        .| C.encodeUtf8
        .| C.stdout
-
-    -- let epoch e net = do
-    --       printf "[Epoch %d]\n" (e :: Int)
-    --       train' <- V.toList <$> MWC.uniformShuffle (V.fromList train) g
-    --       ($ net) . foldr (>=>) pure $
-    --          zipWith batch [0..] (chunksOf 5000 train')
-
-    --     batch b chnk n = do
-    --       printf "(Batch %d)\n" (b :: Int)
-    --       t0 <- getCurrentTime
-    --       n' <- evaluate . force $ runST (trainList chnk n)
-    --       t1 <- getCurrentTime
-    --       printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
-    --       let trainScore = testNet chnk n'
-    --           testScore  = testNet test n'
-    --       printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
-    --       printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
-    --       return n'
-
-    -- void . ($ net0) . foldr (>=>) pure $
-    --     map epoch [0..]
   where
     gr (x, y) = gradBP (netErr (constVar x) (constVar y))
     o = RO' Nothing Nothing
-
--- trainList :: forall s. [(R 784, R 10)] -> Net -> ST s Net
--- trainList xs n0 = fmap (fromJust . fst) . flip foldSampleFoldT xs $
-    -- evalOptoMany o n0 (adam @_ @(MutVar s Net) def (sampling' g))
-  -- where
-    -- g (x, y) = gradBP (netErr (constVar x) (constVar y))
-    -- o = RO' Nothing Nothing
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
