@@ -185,7 +185,7 @@ fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> m (c, Di
 fromStateless :: ScalingInPlace m v c a => (a -> m (c, Diff a)) -> OptoM m v a
 sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
 pureGrad :: Applicative m => (a -> Diff a) -> Grad m a
-sampling' :: MonadSample r m => (r -> a -> Diff a) -> Grad m a
+pureSampling :: MonadSample r m => (r -> a -> Diff a) -> Grad m a
 
 module Numeric.Opto.Run
 data RunOpts m a
