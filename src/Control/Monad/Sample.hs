@@ -37,11 +37,10 @@ import           Data.Foldable
 import           Data.Functor.Identity
 import           Data.Profunctor
 import           Numeric.Opto.Ref
-import qualified Data.Vector                 as V
-import qualified Data.Vector.Generic         as VG
-import qualified Data.Vector.Generic.Mutable as VG
-import qualified Data.Vector.Mutable         as V
-import qualified System.Random.MWC           as MWC
+import qualified Data.Vector.Generic             as VG
+import qualified Data.Vector.Generic.Mutable     as VG
+import qualified System.Random.MWC               as MWC
+import qualified System.Random.MWC.Distributions as MWC
 
 -- | 'MonadPlus' to imply that an empty pool is empty forever unless you
 -- re-fill it first.
@@ -154,6 +153,8 @@ pattern SampleConduit { runSampleConduit } <- (runMaybeT.sampleConduitMaybeT->ru
 instance Monad m => MonadSample i (SampleConduit i o m) where
     sample = SC_ $ MaybeT await
 
+-- | Pulls samples until it cannot pull any more, and returns N shuffled
+-- items from the pool.  Is O(N) memory.
 sampleReservoir
     :: forall m v r. (PrimMonad m, MonadSample r m, VG.Vector v r)
     => Int
@@ -161,6 +162,7 @@ sampleReservoir
     -> m (v r)
 sampleReservoir k g = do
     xs <- VG.thaw =<< sampleN k
+    MWC.uniformShuffleM xs g
     void . optional . for_ [k+1 ..] $ \i -> do
       x <- sample
       j <- MWC.uniformR (1, i) g

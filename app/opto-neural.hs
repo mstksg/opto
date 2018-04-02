@@ -12,22 +12,25 @@
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 
 -- import           Control.Arrow                             (Kleisli(..))
--- import           Control.Monad.IO.Class
+-- import           Control.Monad.ST
 -- import           Control.Monad.Trans.Class
 -- import           Control.Monad.Trans.State
 -- import           Data.Foldable
+-- import           Data.List.Split
+-- import           Data.Maybe
 -- import           Data.Monoid.Endomorphism
+-- import qualified Data.Vector                               as V
+-- import qualified System.Random.MWC.Distributions           as MWC
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Lens hiding                          ((<.>))
 import           Control.Monad
-import           Control.Monad.ST
+import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Bitraversable
+import           Data.Conduit
 import           Data.Default
 import           Data.IDX
-import           Data.List.Split
-import           Data.Maybe
 import           Data.Primitive.MutVar
 import           Data.Time
 import           Data.Traversable
@@ -41,12 +44,12 @@ import           Numeric.Opto hiding                          ((<.>))
 import           System.Environment
 import           System.FilePath hiding                       ((<.>))
 import           Text.Printf
-import qualified Data.Vector                                  as V
+import qualified Data.Conduit.Combinators                     as C
+import qualified Data.Text                                    as T
 import qualified Data.Vector.Generic                          as VG
 import qualified Numeric.LinearAlgebra                        as HM
 import qualified Numeric.LinearAlgebra.Static                 as H
 import qualified System.Random.MWC                            as MWC
-import qualified System.Random.MWC.Distributions              as MWC
 
 data Net = N { _weights1 :: !(L 250 784)
              , _bias1    :: !(R 250)
@@ -111,34 +114,56 @@ main = MWC.withSystemRandom $ \g -> do
                             (datadir </> "t10k-labels-idx1-ubyte")
     putStrLn "Loaded data."
     net0 <- MWC.uniformR (-0.5, 0.5) g
+    let report n b = do
+          yield $ printf "(Batch %d)\n" (b :: Int)
+          t0 <- liftIO getCurrentTime
+          replicateM_ (n - 1) await
+          x <- mapM (liftIO . evaluate . force) =<< await
+          t1 <- liftIO getCurrentTime
+          case x of
+            Nothing  -> yield "Done!\n"
+            Just net -> do
+              yield $ printf "Trained on %d points in %s.\n" (n :: Int) (show (t1 `diffUTCTime` t0))
+              let testScore  = testNet test net
+              yield $ printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
 
-    let epoch e net = do
-          printf "[Epoch %d]\n" (e :: Int)
-          train' <- V.toList <$> MWC.uniformShuffle (V.fromList train) g
-          ($ net) . foldr (>=>) pure $
-             zipWith batch [0..] (chunksOf 5000 train')
+    runConduit $ forever (C.yieldMany train .| shuffling g)
+              .| void (runOptoConduit o net0 (adam @_ @(MutVar _ Net) def (sampling' gr)))
+              .| mapM_ (report 2500) [0..]
+              .| C.map T.pack
+              .| C.encodeUtf8
+              .| C.stdout
 
-        batch b chnk n = do
-          printf "(Batch %d)\n" (b :: Int)
-          t0 <- getCurrentTime
-          n' <- evaluate . force $ runST (trainList chnk n)
-          t1 <- getCurrentTime
-          printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
-          let trainScore = testNet chnk n'
-              testScore  = testNet test n'
-          printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
-          printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
-          return n'
+    -- let epoch e net = do
+    --       printf "[Epoch %d]\n" (e :: Int)
+    --       train' <- V.toList <$> MWC.uniformShuffle (V.fromList train) g
+    --       ($ net) . foldr (>=>) pure $
+    --          zipWith batch [0..] (chunksOf 5000 train')
 
-    void . ($ net0) . foldr (>=>) pure $
-        map epoch [0..]
+    --     batch b chnk n = do
+    --       printf "(Batch %d)\n" (b :: Int)
+    --       t0 <- getCurrentTime
+    --       n' <- evaluate . force $ runST (trainList chnk n)
+    --       t1 <- getCurrentTime
+    --       printf "Trained on %d points in %s.\n" (length chnk) (show (t1 `diffUTCTime` t0))
+    --       let trainScore = testNet chnk n'
+    --           testScore  = testNet test n'
+    --       printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
+    --       printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
+    --       return n'
 
-trainList :: forall s. [(R 784, R 10)] -> Net -> ST s Net
-trainList xs n0 = fmap (fromJust . fst) . flip foldSampleFoldT xs $
-    evalOptoMany o n0 (adam @_ @(MutVar s Net) def (sampling' g))
+    -- void . ($ net0) . foldr (>=>) pure $
+    --     map epoch [0..]
   where
-    g (x, y) = gradBP (netErr (constVar x) (constVar y))
+    gr (x, y) = gradBP (netErr (constVar x) (constVar y))
     o = RO' Nothing Nothing
+
+-- trainList :: forall s. [(R 784, R 10)] -> Net -> ST s Net
+-- trainList xs n0 = fmap (fromJust . fst) . flip foldSampleFoldT xs $
+    -- evalOptoMany o n0 (adam @_ @(MutVar s Net) def (sampling' g))
+  -- where
+    -- g (x, y) = gradBP (netErr (constVar x) (constVar y))
+    -- o = RO' Nothing Nothing
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
