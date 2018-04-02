@@ -74,6 +74,9 @@ newtype SampleConduit i o m a
 SC_ :: MaybeT (ConduitT i o m) a -> SampleConduit i o m a
 [sampleConduitMaybeT] :: SampleConduit i o m a -> MaybeT (ConduitT i o m) a
 runSampleConduit :: () => SampleConduit i o m a -> ConduitT i o m Maybe a
+
+-- | Pulls samples until it cannot pull any more, and returns N shuffled
+--   items from the pool. Is O(N) memory.
 sampleReservoir :: forall m v r. (PrimMonad m, MonadSample r m, Vector v r) => Int -> Gen (PrimState m) -> m (v r)
 instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleConduit i o m)
 instance GHC.Base.MonadPlus (Control.Monad.Sample.SampleConduit i o m)
@@ -196,12 +199,32 @@ runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, Opt
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
 module Numeric.Opto.Run.Conduit
-runOptoConduit :: Monad m => RunOpts (SampleConduit i a m) a -> a -> OptoM (SampleConduit i a m) v a -> ConduitT i a m (OptoM (SampleConduit i a m) v a)
+data RunOpts m a
+RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
+[roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
+[roLimit] :: RunOpts m a -> Maybe Int
+[roBatch] :: RunOpts m a -> Maybe Int
+
+-- | With <a>RunOpts</a>, a chunk size, an initial input, and a
+--   <i>sampling</i> optimizer, give a conduit that processes upstream
+--   samples and outputs all of the updated values as they come along.
+--   
+--   Returns the updated optimizer state.
+runOptoConduit :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+
+-- | With <a>RunOpts</a>, a chunk size, an initial input, and a
+--   <i>sampling</i> optimizer, give a conduit that processes upstream
+--   samples and outputs all of the updated values after the optimizer
+--   finishes.
+--   
+--   Returns the updated optimizer state.
+runOptoConduitChunk :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
 
 -- | Outputs a shuffled version of the input stream. Keeps entire input
 --   stream in memory.
 --   
---   NOTE: Pulls the input stream first before outputting anything.
+--   NOTE: Pulls the entire input stream into memory first before
+--   outputting anything.
 shuffling :: PrimMonad m => Gen (PrimState m) -> ConduitT a a m ()
 
 -- | Takes the first N items out of the input stream, shuffles them
@@ -212,7 +235,16 @@ shuffling :: PrimMonad m => Gen (PrimState m) -> ConduitT a a m ()
 --   Use <a>forever</a> to repeat multiple times until the stream is
 --   exhausted.
 shufflingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
+
+-- | Process an entire stream, and keep N random and shuffled items from
+--   that stream. Is O(N) memory.
 sinkSampleReservoir :: forall m v a o. (PrimMonad m, Vector v a) => Int -> Gen (PrimState m) -> ConduitT a o m (v a)
+
+-- | Process an entire stream, and yield N random items from that stream.
+--   Is O(N) memory.
+--   
+--   NOTE: Exhausts the entire input stream first before outputting
+--   anything, but never keeps the entire stream in memory.
 samplingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
 
 module Numeric.Opto.Optimizer
