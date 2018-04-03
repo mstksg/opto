@@ -260,5 +260,32 @@ instance Scaling c a => Scaling c (T '[a]) where
     scaleOne = scaleOne @c @a
 instance (Scaling c b, Scaling c (T (a ': as)), Additive a, ListC (Additive <$> as), Known Length as)
         => Scaling c (T (b ': (a ': as))) where
-    c .* (x :& xs@(_ :& _)) = (c .* x) :& (c .* xs)
+    c .* (x :& xs) = (c .* x) :& (c .* xs)
     scaleOne = scaleOne @c @b
+
+instance Metric c a => Metric c (T '[a]) where
+    (x :& TNil) <.> (y :& TNil) = x <.> y
+    norm_inf (x :& TNil)        = norm_inf x
+    norm_0 (x :& TNil)          = norm_0 x
+    norm_1 (x :& TNil)          = norm_1 x
+    norm_2 (x :& TNil)          = norm_2 x
+    quadrance (x :& TNil)       = quadrance x
+
+instance ( Metric c b
+         , Metric c (T (a ': as))
+         , Scaling c (T (a ': as))
+         , Additive a
+         , ListC (Additive <$> as)
+         , Known Length as
+         , Ord c
+         , Floating c
+         )
+      => Metric c (T (b ': (a ': as))) where
+    (x :& xs) <.> (y :& ys) = (x <.> y) + (xs <.> ys)
+    norm_inf (x :& xs)      = max (norm_inf x) (norm_inf xs)
+    norm_0 (x :& xs)        = norm_0 x + norm_0 xs
+    norm_1 (x :& xs)        = norm_0 x + norm_0 xs
+    quadrance (x :& xs)     = quadrance x + quadrance xs
+
+instance (Ref m (T as) v, Additive (T as)) => AdditiveInPlace m v (T as)
+instance (Ref m (T as) v, Scaling c (T as)) => ScalingInPlace m v c (T as)
