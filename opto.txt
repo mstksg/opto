@@ -122,16 +122,47 @@ scaleOne :: Scaling c a => c
 scaleOne :: (Scaling c a, Num c) => c
 gScale :: forall c a. (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
 class Scaling c a => Metric c a
+
+-- | Sum of component-wise product
 (<.>) :: Metric c a => a -> a -> c
+
+-- | Maximum absolute component
 norm_inf :: Metric c a => a -> c
+
+-- | Number of non-zero components
 norm_0 :: Metric c a => a -> c
+
+-- | Sum of absolute components
 norm_1 :: Metric c a => a -> c
+
+-- | Square root of sum of squared components
 norm_2 :: Metric c a => a -> c
-(<.>) :: (Metric c a, Num a, c ~ a) => a -> a -> c
-norm_inf :: (Metric c a, Num a, c ~ a) => a -> c
-norm_0 :: (Metric c a, Num a, c ~ a) => a -> c
-norm_1 :: (Metric c a, Num a, c ~ a) => a -> c
-norm_2 :: (Metric c a, Num a, c ~ a) => a -> c
+
+-- | Sum of squared components
+quadrance :: Metric c a => a -> c
+
+-- | Sum of component-wise product
+(<.>) :: (Metric c a, ADT a, Constraints a (Metric c)) => a -> a -> c
+
+-- | Maximum absolute component
+norm_inf :: (Metric c a, ADT a, Constraints a (Metric c), Ord c) => a -> c
+
+-- | Number of non-zero components
+norm_0 :: (Metric c a, ADT a, Constraints a (Metric c)) => a -> c
+
+-- | Sum of absolute components
+norm_1 :: (Metric c a, ADT a, Constraints a (Metric c)) => a -> c
+
+-- | Square root of sum of squared components
+norm_2 :: (Metric c a, Floating c) => a -> c
+
+-- | Sum of squared components
+quadrance :: (Metric c a, ADT a, Constraints a (Metric c)) => a -> c
+gNorm_inf :: forall c a. (ADT a, Constraints a (Metric c), Ord c) => a -> c
+gNorm_0 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
+gNorm_1 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
+gNorm_2 :: forall c a. (ADT a, Constraints a (Metric c), Floating c) => a -> c
+gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 class (Ref m a v, Additive a) => AdditiveInPlace m v a
 (.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
 sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
@@ -155,7 +186,7 @@ instance (Numeric.Opto.Ref.Ref m (a, b, c) v, Numeric.Opto.Update.Additive a, Nu
 instance (Numeric.Opto.Ref.Ref m (a, b, c, d) v, Numeric.Opto.Update.Additive a, Numeric.Opto.Update.Additive b, Numeric.Opto.Update.Additive c, Numeric.Opto.Update.Additive d) => Numeric.Opto.Update.AdditiveInPlace m v (a, b, c, d)
 instance (Numeric.Opto.Ref.Ref m (a, b, c, d, e) v, Numeric.Opto.Update.Additive a, Numeric.Opto.Update.Additive b, Numeric.Opto.Update.Additive c, Numeric.Opto.Update.Additive d, Numeric.Opto.Update.Additive e) => Numeric.Opto.Update.AdditiveInPlace m v (a, b, c, d, e)
 instance Numeric.Opto.Update.Metric GHC.Types.Double GHC.Types.Double
-instance (GHC.Num.Num a, GHC.Classes.Ord a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Metric a (Data.Vector.Generic.Sized.Internal.Vector v n a)
+instance (GHC.Float.Floating a, GHC.Classes.Ord a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Metric a (Data.Vector.Generic.Sized.Internal.Vector v n a)
 instance GHC.TypeNats.KnownNat n => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.R n)
 instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat m) => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.L n m)
 instance Numeric.Opto.Update.Scaling GHC.Types.Double GHC.Types.Double
