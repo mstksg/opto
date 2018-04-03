@@ -336,4 +336,8 @@ instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optim
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Nesterov c)
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Momentum c)
 
+module Numeric.Opto.Backprop
+bpGrad :: (Monad m, Num a, Num b) => (forall s. Reifies s W => BVar s a -> BVar s b) -> Grad m a
+bpGradSample :: (MonadSample r m, Num a, Num b) => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b) -> Grad m a
+
 module Numeric.Opto
