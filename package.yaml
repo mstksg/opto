@@ -28,6 +28,7 @@ dependencies:
 - vector
 - mwc-random
 - conduit
+- backprop >= 0.1.5
 
 ghc-options:
 - -Wall
@@ -51,7 +52,6 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - backprop
     - deepseq
     - filepath
     - hmatrix-backprop

@@ -25,9 +25,13 @@ import           Data.Foldable
 import           Data.Function
 import           Data.Maybe
 import           Data.Semigroup
+import           Data.Type.Length
 import           GHC.TypeLits
 import           Generics.OneLiner
+import           Numeric.Backprop.Tuple
 import           Numeric.Opto.Ref
+import           Type.Class.Known
+import           Type.Family.List
 import qualified Data.Vector.Generic               as VG
 import qualified Data.Vector.Generic.Mutable.Sized as SVGM
 import qualified Data.Vector.Generic.Sized         as SVG
@@ -212,19 +216,49 @@ instance (Additive a, Additive b, Additive c, Additive d) => Additive (a, b, c, 
 instance (Additive a, Additive b, Additive c, Additive d, Additive e) => Additive (a, b, c, d, e) where
     (.+.)   = gAdd
     addZero = gAddZero
+instance (Additive a, Additive b) => Additive (T2 a b) where
+    (.+.)   = gAdd
+    addZero = gAddZero
+instance (Additive a, Additive b, Additive c) => Additive (T3 a b c) where
+    (.+.)   = gAdd
+    addZero = gAddZero
+instance (ListC (Additive <$> as), Known Length as) => Additive (T as) where
+    (.+.)   = zipT @Additive (.+.)
+    addZero = constT @Additive addZero known
 
 instance (Scaling c a, Scaling c b) => Scaling c (a, b)
 instance (Scaling c a, Scaling c b, Scaling c d) => Scaling c (a, b, d)
 instance (Scaling c a, Scaling c b, Scaling c d, Scaling c e) => Scaling c (a, b, d, e)
 instance (Scaling c a, Scaling c b, Scaling c d, Scaling c e, Scaling c f) => Scaling c (a, b, d, e, f)
+instance (Scaling c a, Scaling c b) => Scaling c (T2 a b)
+instance (Scaling c a, Scaling c b, Scaling c d) => Scaling c (T3 a b d)
+
+instance (Metric c a, Metric c b, Ord c, Floating c) => Metric c (a, b)
+instance (Metric c a, Metric c b, Metric c d, Ord c, Floating c) => Metric c (a, b, d)
+instance (Metric c a, Metric c b, Metric c d, Metric c e, Ord c, Floating c) => Metric c (a, b, d, e)
+instance (Metric c a, Metric c b, Metric c d, Metric c e, Metric c f, Ord c, Floating c) => Metric c (a, b, d, e, f)
+instance (Metric c a, Metric c b, Ord c, Floating c) => Metric c (T2 a b)
+instance (Metric c a, Metric c b, Metric c d, Ord c, Floating c) => Metric c (T3 a b d)
 
 -- TODO: different refs
 instance (Ref m (a, b) v, Additive a, Additive b) => AdditiveInPlace m v (a, b)
 instance (Ref m (a, b, c) v, Additive a, Additive b, Additive c) => AdditiveInPlace m v (a, b, c)
 instance (Ref m (a, b, c, d) v, Additive a, Additive b, Additive c, Additive d) => AdditiveInPlace m v (a, b, c, d)
 instance (Ref m (a, b, c, d, e) v, Additive a, Additive b, Additive c, Additive d, Additive e) => AdditiveInPlace m v (a, b, c, d, e)
+instance (Ref m (T2 a b) v, Additive a, Additive b) => AdditiveInPlace m v (T2 a b)
+instance (Ref m (T3 a b c) v, Additive a, Additive b, Additive c) => AdditiveInPlace m v (T3 a b c)
 
 instance (Ref m (a, b) v, Scaling c a, Scaling c b) => ScalingInPlace m v c (a, b)
 instance (Ref m (a, b, d) v, Scaling c a, Scaling c b, Scaling c d) => ScalingInPlace m v c (a, b, d)
 instance (Ref m (a, b, d, e) v, Scaling c a, Scaling c b, Scaling c d, Scaling c e) => ScalingInPlace m v c (a, b, d, e)
 instance (Ref m (a, b, d, e, f) v, Scaling c a, Scaling c b, Scaling c d, Scaling c e, Scaling c f) => ScalingInPlace m v c (a, b, d, e, f)
+instance (Ref m (T2 a b) v, Scaling c a, Scaling c b) => ScalingInPlace m v c (T2 a b)
+instance (Ref m (T3 a b d) v, Scaling c a, Scaling c b, Scaling c d) => ScalingInPlace m v c (T3 a b d)
+
+instance Scaling c a => Scaling c (T '[a]) where
+    c .* (x :& TNil) = (c .* x) :& TNil
+    scaleOne = scaleOne @c @a
+instance (Scaling c b, Scaling c (T (a ': as)), Additive a, ListC (Additive <$> as), Known Length as)
+        => Scaling c (T (b ': (a ': as))) where
+    c .* (x :& xs@(_ :& _)) = (c .* x) :& (c .* xs)
+    scaleOne = scaleOne @c @b
