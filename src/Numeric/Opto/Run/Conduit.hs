@@ -2,9 +2,13 @@
 {-# LANGUAGE TypeApplications    #-}
 
 module Numeric.Opto.Run.Conduit (
+  -- * Running 'Opto's
     RunOpts(..)
   , runOptoConduit
+  , runOptoConduit_
   , runOptoConduitChunk
+  , runOptoConduitChunk_
+  -- * Sampling conduits
   , shuffling
   , shufflingN
   , sinkSampleReservoir
@@ -27,7 +31,7 @@ import qualified System.Random.MWC.Distributions as MWC
 
 -- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
 -- optimizer, give a conduit that processes upstream samples and outputs
--- all of the updated values as they come along.
+-- every single one of the updated values as they are generated.
 --
 -- Returns the updated optimizer state.
 runOptoConduit
@@ -43,9 +47,17 @@ runOptoConduit ro = runOptoConduitChunk ro'
                  roStopCond ro d x
              }
 
+runOptoConduit_
+    :: Monad m
+    => RunOpts (SampleConduit r a m) a
+    -> a
+    -> OptoM (SampleConduit r a m) v a
+    -> ConduitT r a m ()
+runOptoConduit_ ro x0 = void . runOptoConduit ro x0
+
 -- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
 -- optimizer, give a conduit that processes upstream samples and outputs
--- all of the updated values after the optimizer finishes.
+-- the updated value only /after/ the optimizer finishes.
 --
 -- Returns the updated optimizer state.
 runOptoConduitChunk
@@ -60,6 +72,15 @@ runOptoConduitChunk ro x0 o0 = do
             $ runOptoMany ro x0 o0
     yield x
     return o
+
+-- | 'runOptoConduitChunk', without returning the updated optimizer state.
+runOptoConduitChunk_
+    :: Monad m
+    => RunOpts (SampleConduit r a m) a
+    -> a
+    -> OptoM (SampleConduit r a m) v a
+    -> ConduitT r a m ()
+runOptoConduitChunk_ ro x0 = void . runOptoConduitChunk ro x0
 
 -- | Outputs a shuffled version of the input stream.  Keeps entire input
 -- stream in memory.
