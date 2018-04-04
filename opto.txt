@@ -299,6 +299,9 @@ sinkSampleReservoir :: forall m v a o. (PrimMonad m, Vector v a) => Int -> Gen (
 --   anything, but never keeps the entire stream in memory.
 samplingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
 
+-- | Drops and lets items through randomly with a given probability.
+skipSampling :: PrimMonad m => Double -> Gen (PrimState m) -> ConduitT a a m ()
+
 module Numeric.Opto.Optimizer
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> Grad m a -> OptoM m v a
 newtype Momentum c
