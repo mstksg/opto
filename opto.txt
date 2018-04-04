@@ -259,18 +259,24 @@ RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
 --   <i>sampling</i> optimizer, give a conduit that processes upstream
---   samples and outputs all of the updated values as they come along.
+--   samples and outputs every single one of the updated values as they are
+--   generated.
 --   
 --   Returns the updated optimizer state.
 runOptoConduit :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+runOptoConduit_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m ()
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
 --   <i>sampling</i> optimizer, give a conduit that processes upstream
---   samples and outputs all of the updated values after the optimizer
+--   samples and outputs the updated value only <i>after</i> the optimizer
 --   finishes.
 --   
 --   Returns the updated optimizer state.
 runOptoConduitChunk :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+
+-- | <a>runOptoConduitChunk</a>, without returning the updated optimizer
+--   state.
+runOptoConduitChunk_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m ()
 
 -- | Outputs a shuffled version of the input stream. Keeps entire input
 --   stream in memory.
