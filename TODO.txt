@@ -1,0 +1,2 @@
+
+*   Find way to reset thing if loss spikes/diverges

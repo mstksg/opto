@@ -9,16 +9,17 @@ module Numeric.Opto.Run.Conduit (
   , shufflingN
   , sinkSampleReservoir
   , samplingN
+  , skipSampling
   ) where
 
 import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.Sample
 import           Data.Conduit
-import           Data.Conduit.Combinators
 import           Data.Maybe
 import           Numeric.Opto.Core
 import           Numeric.Opto.Run
+import qualified Data.Conduit.Combinators        as C
 import qualified Data.Vector                     as V
 import qualified Data.Vector.Generic             as VG
 import qualified System.Random.MWC               as MWC
@@ -70,8 +71,8 @@ shuffling
     => MWC.Gen (PrimState m)
     -> ConduitT a a m ()
 shuffling g = do
-    v <- sinkVector @V.Vector
-    yieldMany =<< MWC.uniformShuffle v g
+    v <- C.sinkVector @V.Vector
+    C.yieldMany =<< MWC.uniformShuffle v g
 
 -- | Takes the first N items out of the input stream, shuffles them
 -- in-memory, and outputs the shuffled result.
@@ -85,8 +86,8 @@ shufflingN
     -> MWC.Gen (PrimState m)
     -> ConduitT a a m ()
 shufflingN n g = do
-    v <- sinkVectorN @V.Vector n
-    yieldMany =<< MWC.uniformShuffle v g
+    v <- C.sinkVectorN @V.Vector n
+    C.yieldMany =<< MWC.uniformShuffle v g
 
 -- | Process an entire stream, and keep N random and shuffled items from
 -- that stream.  Is O(N) memory.
@@ -109,4 +110,20 @@ samplingN
     => Int
     -> MWC.Gen (PrimState m)
     -> ConduitT a a m ()
-samplingN k = yieldMany <=< sinkSampleReservoir @_ @V.Vector k
+samplingN k = C.yieldMany <=< sinkSampleReservoir @_ @V.Vector k
+
+-- | Drops and lets items through randomly with a given probability.
+skipSampling
+    :: PrimMonad m
+    => Double               -- ^ probability of pass-through
+    -> MWC.Gen (PrimState m)
+    -> ConduitT a a m ()
+skipSampling λ g = go
+  where
+    go = do
+      n <- MWC.geometric0 λ g
+      C.drop n
+      mx <- await
+      case mx of
+        Just x  -> yield x >> go
+        Nothing -> return ()
