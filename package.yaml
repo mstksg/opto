@@ -32,6 +32,7 @@ dependencies:
 
 ghc-options:
 - -Wall
+- -fwarn-redundant-constraints
 
 library:
   source-dirs: src
@@ -42,6 +43,12 @@ library:
   - type-combinators
   - typelits-witnesses
   - vector-sized >= 1.0
+  exposed-modules:
+  - Numeric.Opto.Core
+  - Control.Monad.Sample
+  - Numeric.Opto.Update
+  - Numeric.Opto.Run
+  other-modules: []
 
 executables:
   opto-neural:

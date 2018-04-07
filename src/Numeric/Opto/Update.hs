@@ -15,12 +15,8 @@ module Numeric.Opto.Update (
     Additive(..), sumAdditive, gAdd, gAddZero
   , Scaling(..), gScale
   , Metric(..), gNorm_inf, gNorm_0, gNorm_1, gNorm_2, gQuadrance
-  , AdditiveInPlace(..), sumAdditiveInPlace
-  , ScalingInPlace(..)
   ) where
 
-import           Control.Monad.Primitive
-import           Data.Finite
 import           Data.Foldable
 import           Data.Function
 import           Data.Maybe
@@ -29,14 +25,12 @@ import           Data.Type.Length
 import           GHC.TypeLits
 import           Generics.OneLiner
 import           Numeric.Backprop.Tuple
-import           Numeric.Opto.Ref
 import           Type.Class.Known
 import           Type.Family.List
-import qualified Data.Vector.Generic               as VG
-import qualified Data.Vector.Generic.Mutable.Sized as SVGM
-import qualified Data.Vector.Generic.Sized         as SVG
-import qualified Numeric.LinearAlgebra             as UH
-import qualified Numeric.LinearAlgebra.Static      as H
+import qualified Data.Vector.Generic                  as VG
+import qualified Data.Vector.Generic.Sized            as SVG
+import qualified Numeric.LinearAlgebra                as UH
+import qualified Numeric.LinearAlgebra.Static         as H
 
 class Additive a where
     infixl 6 .+.
@@ -64,7 +58,7 @@ class (Num c, Additive a) => Scaling c a | a -> c where
 
     default (.*) :: (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
     (.*) = gScale
-    default scaleOne :: Num c => c
+    default scaleOne :: c
     scaleOne = 1
 
 gScale :: forall c a. (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
@@ -119,22 +113,6 @@ gNorm_2 = sqrt . gQuadrance
 gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 gQuadrance = getSum . gfoldMap @(Metric c) (Sum . quadrance)
 
-class (Ref m a v, Additive a) => AdditiveInPlace m v a where
-    infix 4 .+.=
-    (.+.=) :: v -> a -> m ()
-    r .+.= x = modifyRef' r (.+. x)
-
-sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
-sumAdditiveInPlace v = mapM_ (v .+.=)
-
-class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a where
-    infix 4 .*=
-    (.*=)  :: v -> c -> m ()
-    r .*= c = modifyRef' r (c .*)
-    infix 4 .*+=
-    (.*+=) :: v -> (c, a) -> m ()
-    r .*+= (c, x) = modifyRef' r ((c .* x) .+.)
-
 instance Additive Double
 instance Scaling Double Double where
     (.*) = (*)
@@ -145,9 +123,6 @@ instance Metric Double Double where
     norm_1    = abs
     norm_2    = abs
     quadrance = (^ (2 :: Int))
-
-instance Ref m Double v => AdditiveInPlace m v Double
-instance Ref m Double v => ScalingInPlace m v Double Double
 
 instance (Num a, VG.Vector v a, KnownNat n) => Additive (SVG.Vector v n a) where
     (.+.)   = (+)
@@ -164,18 +139,6 @@ instance (Floating a, Ord a, VG.Vector v a, KnownNat n) => Metric a (SVG.Vector 
     norm_1    = SVG.sum . abs
     quadrance = SVG.sum . (^ (2 :: Int))
 
-instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
-      => AdditiveInPlace m (SVG.MVector mv n s a) (SVG.Vector v n a) where
-    r .+.= xs = flip SVG.imapM_ xs $ \i x ->
-      SVGM.modify r (+ x) i
-
-instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
-      => ScalingInPlace m (SVG.MVector mv n s a) a (SVG.Vector v n a) where
-    r .*= c = forM_ finites $ \i ->
-      SVGM.modify r (c *) i
-    r .*+= (c, xs) = flip SVG.imapM_ xs $ \i x ->
-      SVGM.modify r (+ (c * x)) i
-
 instance Additive (H.R n)
 instance KnownNat n => Scaling Double (H.R n) where
     c .* xs  = H.konst c * xs
@@ -187,8 +150,6 @@ instance KnownNat n => Metric Double (H.R n) where
     norm_1   = H.norm_1
     norm_2   = H.norm_2
     quadrance = (**2) . H.norm_2
-instance (KnownNat n, Ref m (H.R n) v) => AdditiveInPlace m v (H.R n)
-instance (KnownNat n, Ref m (H.R n) v) => ScalingInPlace m v Double (H.R n)
 
 instance (KnownNat n, KnownNat m) => Additive (H.L n m)
 instance (KnownNat n, KnownNat m) => Scaling Double (H.L n m) where
@@ -201,8 +162,6 @@ instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
     norm_1    = UH.sumElements . H.extract
     norm_2    = UH.norm_2 . UH.flatten . H.extract
     quadrance = (**2) . norm_2
-instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => AdditiveInPlace m v (H.L n k)
-instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => ScalingInPlace m v Double (H.L n k)
 
 instance (Additive a, Additive b) => Additive (a, b) where
     (.+.)   = gAdd
@@ -240,21 +199,6 @@ instance (Metric c a, Metric c b, Metric c d, Metric c e, Metric c f, Ord c, Flo
 instance (Metric c a, Metric c b, Ord c, Floating c) => Metric c (T2 a b)
 instance (Metric c a, Metric c b, Metric c d, Ord c, Floating c) => Metric c (T3 a b d)
 
--- TODO: different refs
-instance (Ref m (a, b) v, Additive a, Additive b) => AdditiveInPlace m v (a, b)
-instance (Ref m (a, b, c) v, Additive a, Additive b, Additive c) => AdditiveInPlace m v (a, b, c)
-instance (Ref m (a, b, c, d) v, Additive a, Additive b, Additive c, Additive d) => AdditiveInPlace m v (a, b, c, d)
-instance (Ref m (a, b, c, d, e) v, Additive a, Additive b, Additive c, Additive d, Additive e) => AdditiveInPlace m v (a, b, c, d, e)
-instance (Ref m (T2 a b) v, Additive a, Additive b) => AdditiveInPlace m v (T2 a b)
-instance (Ref m (T3 a b c) v, Additive a, Additive b, Additive c) => AdditiveInPlace m v (T3 a b c)
-
-instance (Ref m (a, b) v, Scaling c a, Scaling c b) => ScalingInPlace m v c (a, b)
-instance (Ref m (a, b, d) v, Scaling c a, Scaling c b, Scaling c d) => ScalingInPlace m v c (a, b, d)
-instance (Ref m (a, b, d, e) v, Scaling c a, Scaling c b, Scaling c d, Scaling c e) => ScalingInPlace m v c (a, b, d, e)
-instance (Ref m (a, b, d, e, f) v, Scaling c a, Scaling c b, Scaling c d, Scaling c e, Scaling c f) => ScalingInPlace m v c (a, b, d, e, f)
-instance (Ref m (T2 a b) v, Scaling c a, Scaling c b) => ScalingInPlace m v c (T2 a b)
-instance (Ref m (T3 a b d) v, Scaling c a, Scaling c b, Scaling c d) => ScalingInPlace m v c (T3 a b d)
-
 instance Scaling c a => Scaling c (T '[a]) where
     c .* (x :& TNil) = (c .* x) :& TNil
     scaleOne = scaleOne @c @a
@@ -286,6 +230,3 @@ instance ( Metric c b
     norm_0 (x :& xs)        = norm_0 x + norm_0 xs
     norm_1 (x :& xs)        = norm_0 x + norm_0 xs
     quadrance (x :& xs)     = quadrance x + quadrance xs
-
-instance (Ref m (T as) v, Additive (T as)) => AdditiveInPlace m v (T as)
-instance (Ref m (T as) v, Scaling c (T as)) => ScalingInPlace m v c (T as)

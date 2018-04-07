@@ -16,7 +16,6 @@
 
 module Control.Monad.Sample (
     MonadSample(..), flushSamples
-  , SampleRef(.., SampleRef), runSampleRef, foldSampleRef
   , SampleFoldT(.., SampleFoldT), runSampleFoldT, foldSampleFoldT
   , SampleFold, runSampleFold, foldSampleFold, sampleFold
   , SampleConduit(.., SampleConduit), runSampleConduit
@@ -29,14 +28,12 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Primitive
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans.Reader
 import           Control.Monad.Trans.State
 import           Data.Bifunctor
 import           Data.Conduit
 import           Data.Foldable
 import           Data.Functor.Identity
 import           Data.Profunctor
-import           Numeric.Opto.Ref
 import qualified Data.Vector.Generic             as VG
 import qualified Data.Vector.Generic.Mutable     as VG
 import qualified System.Random.MWC               as MWC
@@ -55,41 +52,6 @@ class MonadPlus m => MonadSample r m | m -> r where
 
 flushSamples :: MonadSample r m => m [r]
 flushSamples = many sample
-
-newtype SampleRef v r m a = SR_ { sampleRefReader :: MaybeT (ReaderT v m) a }
-    deriving ( Functor
-             , Applicative
-             , Monad
-             , PrimMonad
-             , Alternative
-             , MonadPlus
-             , MonadIO
-             )
-
-instance MonadTrans (SampleRef v r) where
-    lift = SR_ . lift . lift
-
-pattern SampleRef :: (v -> m (Maybe a)) -> SampleRef v r m a
-pattern SampleRef { runSampleRef } <- (unwrapSR->runSampleRef)
-  where
-    SampleRef = SR_ . MaybeT . ReaderT
-
-unwrapSR :: SampleRef v r m a -> v -> m (Maybe a)
-unwrapSR = runReaderT . runMaybeT . sampleRefReader
-
-foldSampleRef :: (Ref m [r] v, Foldable t) => SampleRef v r m a -> t r -> m (Maybe a, [r])
-foldSampleRef sr xs = do
-    r <- newRef (toList xs)
-    y <- runSampleRef sr r
-    (y,) <$> readRef r
-
-instance (Monad m, Ref m [r] v) => MonadSample r (SampleRef v r m) where
-    sample = SampleRef $ \v ->
-      updateRef' v $ \case
-        []   -> ([], Nothing)
-        x:xs -> (xs, Just x )
-    sampleN n = SampleRef $ \v ->
-      updateRef' v (second (Just . VG.fromList) . splitAt n)
 
 newtype SampleFoldT r m a = SFT_ { sampleFoldState :: MaybeT (StateT [r] m) a }
     deriving ( Functor
