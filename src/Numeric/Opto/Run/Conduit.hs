@@ -47,6 +47,7 @@ runOptoConduit ro = runOptoConduitChunk ro'
                  roStopCond ro d x
              }
 
+-- | 'runOptoConduit', without returning the updated optimizer state.
 runOptoConduit_
     :: Monad m
     => RunOpts (SampleConduit r a m) a
