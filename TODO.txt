@@ -2,3 +2,4 @@
 *   Find way to reset thing if loss spikes/diverges
 *   Get rid of mutable/in place system, since it might not help.  or at least
     benchmark.
+*   parallel

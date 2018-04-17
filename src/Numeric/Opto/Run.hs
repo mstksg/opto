@@ -6,23 +6,41 @@
 {-# LANGUAGE TypeApplications    #-}
 
 module Numeric.Opto.Run (
+  -- * Single-threaded
     RunOpts(.., RO')
   , runOptoMany, evalOptoMany
   , runOpto, evalOpto
+  -- * Parallel
+  , ParallelOpts(..)
+  , runOptoManyParallel
+  , runOptoParallel
   ) where
 
 import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.IO.Unlift
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
+import           Control.Monad.Trans.State
+import           Data.Maybe
+import           Data.Semigroup
+import           Numeric.Backprop.Tuple
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
+import           UnliftIO.Async
+import           UnliftIO.Concurrent
+import           UnliftIO.IORef
 
 data RunOpts m a = RO { roStopCond :: Diff a -> a -> m Bool
                       , roLimit    :: Maybe Int
                       , roBatch    :: Maybe Int
                       }
+
+data ParallelOpts = PO { poThreads   :: Maybe Int
+                       , poSplitRuns :: Int         -- ^ how much each thread will process before regrouping
+                       }
+
 
 -- | Construct a 'RunOpts' with no stopping condition
 pattern RO' :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
@@ -74,7 +92,6 @@ runOpto RO{..} x0 MkOptoM{..} = do
             (\d -> lift . roStopCond d)
     o' <- flip MkOptoM oUpdate <$> pullRefs rSs
     (, o') <$> readRef rX
-  where
 
 evalOpto
     :: forall m v a. Monad m
@@ -112,3 +129,75 @@ optoLoop lim batch initXVar updateXVar readXVar xVar updateState stop = repeatLi
         replicateM_ b $
           updateXVar v =<< updateState x
         (scaleOne @c @a,) <$> readXVar v
+
+mean :: (Foldable t, Fractional a) => t a -> a
+mean = uncurryT2 go . getSum . foldMap (\x -> Sum (T2 x 1))
+  where
+    go x n = x / fromInteger n
+
+runOptoManyParallel
+    :: (MonadUnliftIO m, MonadPlus m, Fractional a)
+    => RunOpts m a
+    -> ParallelOpts
+    -> a
+    -> OptoM m v a
+    -> m (a, [OptoM m v a])
+runOptoManyParallel ro PO{..} x0 o0 = do
+    n <- maybe getNumCapabilities pure poThreads
+    hitStop <- newIORef Nothing
+    let os0 = replicate n o0
+    fmap fst . flip execStateT ((x0, os0), 0) . many . StateT $ \((x,os), i) -> do
+      maybe (pure ()) (const empty) =<< readIORef hitStop
+      m <- case roLimit ro of
+        Nothing -> pure poSplitRuns
+        Just l  -> do
+          guard $ i < l
+          pure $ if i + poSplitRuns <= l
+                   then poSplitRuns
+                   else l - i
+      (xs, os') <- fmap unzip . forConcurrently os $ \o ->
+        runOptoMany (ro { roLimit    = Just m
+                        , roStopCond = \d y -> do
+                            s <- roStopCond ro d y
+                            when s $ writeIORef hitStop $ Just y
+                            return s
+                        }
+                    ) x o
+      newX <- fromMaybe (mean xs) <$> readIORef hitStop
+      return ((), ((newX, os'), i + m))
+
+runOptoParallel
+    :: (MonadUnliftIO m, Fractional a)
+    => RunOpts m a
+    -> ParallelOpts
+    -> a
+    -> OptoM m v a
+    -> m (a, [OptoM m v a])
+runOptoParallel ro PO{..} x0 o0 = do
+    n <- maybe getNumCapabilities pure poThreads
+    hitStop <- newIORef Nothing
+    let os0 = replicate n o0
+    fmap (maybe (x0, os0) fst)
+        . runMaybeT
+        . flip execStateT ((x0, os0), 0)
+        . many
+        . StateT $ \((x,os), i) -> do
+      maybe (pure ()) (const empty) =<< readIORef hitStop
+      m <- case roLimit ro of
+        Nothing -> pure poSplitRuns
+        Just l  -> do
+          guard $ i < l
+          pure $ if i + poSplitRuns <= l
+                   then poSplitRuns
+                   else l - i
+      (xs, os') <- lift . fmap unzip . forConcurrently os $ \o ->
+        runOpto (ro { roLimit    = Just m
+                    , roStopCond = \d y -> do
+                        s <- roStopCond ro d y
+                        when s $ writeIORef hitStop $ Just y
+                        return s
+                    }
+                ) x o
+      newX <- fromMaybe (mean xs) <$> readIORef hitStop
+      return ((), ((newX, os'), i + m))
+

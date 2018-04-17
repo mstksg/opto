@@ -1,13 +1,18 @@
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
 module Numeric.Opto.Run.Conduit (
   -- * Running 'Opto's
+  -- ** Single threaded
     RunOpts(..)
   , runOptoConduit
   , runOptoConduit_
   , runOptoConduitChunk
   , runOptoConduitChunk_
+  , SampleConduit(.., SampleConduit), runSampleConduit
+  -- ** Parallel
+  , ParallelOpts(..)
   -- * Sampling conduits
   , shuffling
   , shufflingN
@@ -16,18 +21,25 @@ module Numeric.Opto.Run.Conduit (
   , skipSampling
   ) where
 
+-- import           Control.Concurrent.STM.TQueue
+-- import           Data.Conduit.TQueue
+import           Control.Concurrent.STM.TBMQueue
 import           Control.Monad
+import           Control.Monad.IO.Unlift
 import           Control.Monad.Primitive
 import           Control.Monad.Sample
+import           Control.Monad.Trans.Class
 import           Data.Conduit
 import           Data.Maybe
 import           Numeric.Opto.Core
 import           Numeric.Opto.Run
-import qualified Data.Conduit.Combinators        as C
-import qualified Data.Vector                     as V
-import qualified Data.Vector.Generic             as VG
-import qualified System.Random.MWC               as MWC
-import qualified System.Random.MWC.Distributions as MWC
+import           UnliftIO.Concurrent hiding       (yield)
+import           UnliftIO.STM
+import qualified Data.Conduit.Combinators         as C
+import qualified Data.Vector                      as V
+import qualified Data.Vector.Generic              as VG
+import qualified System.Random.MWC                as MWC
+import qualified System.Random.MWC.Distributions  as MWC
 
 -- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
 -- optimizer, give a conduit that processes upstream samples and outputs
@@ -82,6 +94,34 @@ runOptoConduitChunk_
     -> OptoM (SampleConduit r a m) v a
     -> ConduitT r a m ()
 runOptoConduitChunk_ ro x0 = void . runOptoConduitChunk ro x0
+
+---- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
+---- optimizer, give a conduit that processes upstream samples and outputs
+---- the updated value only /after/ the optimizer finishes.
+----
+---- Returns the updated optimizer state.
+--runOptoParallelConduitChunk
+--    :: MonadUnliftIO m
+--    => RunOpts (SampleConduit r a m) a
+--    -> ParallelOpts
+--    -> a
+--    -> OptoM (SampleConduit r a m) v a
+--    -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+--runOptoParallelConduitChunk ro po x0 o0 = do
+--    tq <- lift newTQueueIO
+--    replicateM_ 100 $ do
+--      x <- await
+--      mapM_ (lift . atomically . writeTQueue tq) x
+--    undefined
+--    -- forkIO $ _
+--    -- _
+
+    -- (x, o) <- fmap (fromMaybe (x0, o0))
+    --         . runSampleConduit
+    --         $ runOptoMany ro x0 o0
+    -- yield x
+    -- return o
+
 
 -- | Outputs a shuffled version of the input stream.  Keeps entire input
 -- stream in memory.

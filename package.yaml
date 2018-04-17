@@ -42,6 +42,10 @@ library:
   - type-combinators
   - typelits-witnesses
   - vector-sized >= 1.0
+  - unliftio
+  - unliftio-core
+  - stm
+  - stm-chans
 
 executables:
   opto-neural:
