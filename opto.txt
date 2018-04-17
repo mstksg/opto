@@ -249,6 +249,14 @@ runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a ->
 evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
+data ParallelOpts
+PO :: Maybe Int -> Int -> ParallelOpts
+[poThreads] :: ParallelOpts -> Maybe Int
+
+-- | how much each thread will process before regrouping
+[poSplitRuns] :: ParallelOpts -> Int
+runOptoManyParallel :: (MonadUnliftIO m, MonadPlus m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
+runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
 
 module Numeric.Opto.Run.Conduit
 data RunOpts m a
@@ -264,6 +272,8 @@ RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 --   
 --   Returns the updated optimizer state.
 runOptoConduit :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+
+-- | <a>runOptoConduit</a>, without returning the updated optimizer state.
 runOptoConduit_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m ()
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
@@ -277,6 +287,16 @@ runOptoConduitChunk :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM 
 -- | <a>runOptoConduitChunk</a>, without returning the updated optimizer
 --   state.
 runOptoConduitChunk_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m ()
+newtype SampleConduit i o m a
+SC_ :: MaybeT (ConduitT i o m) a -> SampleConduit i o m a
+[sampleConduitMaybeT] :: SampleConduit i o m a -> MaybeT (ConduitT i o m) a
+runSampleConduit :: () => SampleConduit i o m a -> ConduitT i o m Maybe a
+data ParallelOpts
+PO :: Maybe Int -> Int -> ParallelOpts
+[poThreads] :: ParallelOpts -> Maybe Int
+
+-- | how much each thread will process before regrouping
+[poSplitRuns] :: ParallelOpts -> Int
 
 -- | Outputs a shuffled version of the input stream. Keeps entire input
 --   stream in memory.
