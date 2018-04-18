@@ -56,55 +56,31 @@ sample :: MonadSample r m => m r
 -- | Should never fail
 sampleN :: (MonadSample r m, Vector v r) => Int -> m (v r)
 flushSamples :: MonadSample r m => m [r]
-newtype SampleRef v r m a
-SR_ :: MaybeT (ReaderT v m) a -> SampleRef v r m a
-[sampleRefReader] :: SampleRef v r m a -> MaybeT (ReaderT v m) a
-runSampleRef :: () => SampleRef v r m a -> v -> m Maybe a
-foldSampleRef :: (Ref m [r] v, Foldable t) => SampleRef v r m a -> t r -> m (Maybe a, [r])
-newtype SampleFoldT r m a
-SFT_ :: MaybeT (StateT [r] m) a -> SampleFoldT r m a
-[sampleFoldState] :: SampleFoldT r m a -> MaybeT (StateT [r] m) a
-runSampleFoldT :: () => SampleFoldT r m a -> [r] -> m (Maybe a, [r])
-foldSampleFoldT :: Foldable t => SampleFoldT r m a -> t r -> m (Maybe a, [r])
-type SampleFold r = SampleFoldT r Identity
-runSampleFold :: SampleFold r a -> [r] -> (Maybe a, [r])
-foldSampleFold :: Foldable t => SampleFold r a -> t r -> (Maybe a, [r])
-sampleFold :: Monad m => ([r] -> (Maybe a, [r])) -> SampleFoldT r m a
-newtype SampleConduit i o m a
-SC_ :: MaybeT (ConduitT i o m) a -> SampleConduit i o m a
-[sampleConduitMaybeT] :: SampleConduit i o m a -> MaybeT (ConduitT i o m) a
-runSampleConduit :: () => SampleConduit i o m a -> ConduitT i o m Maybe a
 
 -- | Pulls samples until it cannot pull any more, and returns N shuffled
 --   items from the pool. Is O(N) memory.
 sampleReservoir :: forall m v r. (PrimMonad m, MonadSample r m, Vector v r) => Int -> Gen (PrimState m) -> m (v r)
-instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleConduit i o m)
-instance GHC.Base.MonadPlus (Control.Monad.Sample.SampleConduit i o m)
-instance GHC.Base.Alternative (Control.Monad.Sample.SampleConduit i o m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleConduit i o m)
-instance GHC.Base.Monad (Control.Monad.Sample.SampleConduit i o m)
-instance GHC.Base.Applicative (Control.Monad.Sample.SampleConduit i o m)
-instance GHC.Base.Functor (Control.Monad.Sample.SampleConduit i o m)
-instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleFoldT r m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleFoldT r m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleFoldT r m)
-instance forall v k (r :: k) (m :: * -> *). Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleRef v r m)
-instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleRef v r m)
-instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleRef v r m)
-instance forall v k (r :: k) (m :: * -> *). Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleRef v r m)
-instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleRef v r m)
-instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleRef v r m)
-instance forall v k (r :: k) (m :: * -> *). GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleRef v r m)
-instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleConduit i o)
-instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample i (Control.Monad.Sample.SampleConduit i o m)
-instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleFoldT r)
-instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleFoldT r m)
-instance forall k v (r :: k). Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleRef v r)
-instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m [r] v) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleRef v r m)
+data SampleAct m r
+SA :: m (Maybe r) -> forall v. Vector v r => Int -> m (Maybe (v r)) -> SampleAct m r
+[saSample] :: SampleAct m r -> m (Maybe r)
+[saSampleN] :: SampleAct m r -> forall v. Vector v r => Int -> m (Maybe (v r))
+newtype SampleT r m a
+ST :: MaybeT (ReaderT (SampleAct m r) m) a -> SampleT r m a
+[sampleTReader] :: SampleT r m a -> MaybeT (ReaderT (SampleAct m r) m) a
+runSampleT :: () => SampleT r m a -> SampleAct m r -> m Maybe a
+simpleSA :: forall m r. Monad m => m (Maybe r) -> SampleAct m r
+saRef :: Ref m [r] v => v -> SampleAct m r
+saState :: MonadState [r] m => SampleAct m r
+saConduit :: Monad m => SampleAct (ConduitT r o m) r
+instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleT r m)
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleT r m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleT r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleT r m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleT r m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleT r m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleT r m)
+instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleT r)
+instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleT r m)
 
 module Numeric.Opto.Update
 class Additive a
@@ -271,10 +247,10 @@ RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
 --   generated.
 --   
 --   Returns the updated optimizer state.
-runOptoConduit :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+runOptoConduit :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
 
 -- | <a>runOptoConduit</a>, without returning the updated optimizer state.
-runOptoConduit_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m ()
+runOptoConduit_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
 --   <i>sampling</i> optimizer, give a conduit that processes upstream
@@ -282,15 +258,11 @@ runOptoConduit_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (Sam
 --   finishes.
 --   
 --   Returns the updated optimizer state.
-runOptoConduitChunk :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+runOptoConduitChunk :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
 
 -- | <a>runOptoConduitChunk</a>, without returning the updated optimizer
 --   state.
-runOptoConduitChunk_ :: Monad m => RunOpts (SampleConduit r a m) a -> a -> OptoM (SampleConduit r a m) v a -> ConduitT r a m ()
-newtype SampleConduit i o m a
-SC_ :: MaybeT (ConduitT i o m) a -> SampleConduit i o m a
-[sampleConduitMaybeT] :: SampleConduit i o m a -> MaybeT (ConduitT i o m) a
-runSampleConduit :: () => SampleConduit i o m a -> ConduitT i o m Maybe a
+runOptoConduitChunk_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
 data ParallelOpts
 PO :: Maybe Int -> Int -> ParallelOpts
 [poThreads] :: ParallelOpts -> Maybe Int
