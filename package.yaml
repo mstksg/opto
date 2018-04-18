@@ -46,6 +46,7 @@ library:
   - unliftio-core
   - stm
   - stm-chans
+  - mtl
 
 executables:
   opto-neural:

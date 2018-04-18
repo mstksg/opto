@@ -10,7 +10,6 @@ module Numeric.Opto.Run.Conduit (
   , runOptoConduit_
   , runOptoConduitChunk
   , runOptoConduitChunk_
-  , SampleConduit(.., SampleConduit), runSampleConduit
   -- ** Parallel
   , ParallelOpts(..)
   -- * Sampling conduits
@@ -21,11 +20,13 @@ module Numeric.Opto.Run.Conduit (
   , skipSampling
   ) where
 
+-- import           Control.Concurrent.STM.TBMQueue
 -- import           Control.Concurrent.STM.TQueue
+-- import           Control.Monad.IO.Unlift
 -- import           Data.Conduit.TQueue
-import           Control.Concurrent.STM.TBMQueue
+-- import           UnliftIO.Concurrent hiding      (yield)
+-- import           UnliftIO.STM
 import           Control.Monad
-import           Control.Monad.IO.Unlift
 import           Control.Monad.Primitive
 import           Control.Monad.Sample
 import           Control.Monad.Trans.Class
@@ -33,13 +34,11 @@ import           Data.Conduit
 import           Data.Maybe
 import           Numeric.Opto.Core
 import           Numeric.Opto.Run
-import           UnliftIO.Concurrent hiding       (yield)
-import           UnliftIO.STM
-import qualified Data.Conduit.Combinators         as C
-import qualified Data.Vector                      as V
-import qualified Data.Vector.Generic              as VG
-import qualified System.Random.MWC                as MWC
-import qualified System.Random.MWC.Distributions  as MWC
+import qualified Data.Conduit.Combinators           as C
+import qualified Data.Vector                        as V
+import qualified Data.Vector.Generic                as VG
+import qualified System.Random.MWC                  as MWC
+import qualified System.Random.MWC.Distributions    as MWC
 
 -- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
 -- optimizer, give a conduit that processes upstream samples and outputs
@@ -48,23 +47,23 @@ import qualified System.Random.MWC.Distributions  as MWC
 -- Returns the updated optimizer state.
 runOptoConduit
     :: Monad m
-    => RunOpts (SampleConduit r a m) a
+    => RunOpts (SampleT r (ConduitT r a m)) a
     -> a
-    -> OptoM (SampleConduit r a m) v a
-    -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+    -> OptoM (SampleT r (ConduitT r a m)) v a
+    -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
 runOptoConduit ro = runOptoConduitChunk ro'
   where
     ro' = ro { roStopCond = \d x -> do
-                 SampleConduit . fmap Just $ yield x
+                 lift $ yield x
                  roStopCond ro d x
              }
 
 -- | 'runOptoConduit', without returning the updated optimizer state.
 runOptoConduit_
     :: Monad m
-    => RunOpts (SampleConduit r a m) a
+    => RunOpts (SampleT r (ConduitT r a m)) a
     -> a
-    -> OptoM (SampleConduit r a m) v a
+    -> OptoM (SampleT r (ConduitT r a m)) v a
     -> ConduitT r a m ()
 runOptoConduit_ ro x0 = void . runOptoConduit ro x0
 
@@ -75,13 +74,13 @@ runOptoConduit_ ro x0 = void . runOptoConduit ro x0
 -- Returns the updated optimizer state.
 runOptoConduitChunk
     :: Monad m
-    => RunOpts (SampleConduit r a m) a
+    => RunOpts (SampleT r (ConduitT r a m)) a
     -> a
-    -> OptoM (SampleConduit r a m) v a
-    -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
+    -> OptoM (SampleT r (ConduitT r a m)) v a
+    -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
 runOptoConduitChunk ro x0 o0 = do
     (x, o) <- fmap (fromMaybe (x0, o0))
-            . runSampleConduit
+            . flip runSampleT saConduit
             $ runOptoMany ro x0 o0
     yield x
     return o
@@ -89,9 +88,9 @@ runOptoConduitChunk ro x0 o0 = do
 -- | 'runOptoConduitChunk', without returning the updated optimizer state.
 runOptoConduitChunk_
     :: Monad m
-    => RunOpts (SampleConduit r a m) a
+    => RunOpts (SampleT r (ConduitT r a m)) a
     -> a
-    -> OptoM (SampleConduit r a m) v a
+    -> OptoM (SampleT r (ConduitT r a m)) v a
     -> ConduitT r a m ()
 runOptoConduitChunk_ ro x0 = void . runOptoConduitChunk ro x0
 
@@ -159,7 +158,7 @@ sinkSampleReservoir
     -> MWC.Gen (PrimState m)
     -> ConduitT a o m (v a)
 sinkSampleReservoir n = fmap (fromMaybe VG.empty)
-                      . runSampleConduit
+                      . flip runSampleT saConduit
                       . sampleReservoir n
 
 -- | Process an entire stream, and yield N random items from that stream.
