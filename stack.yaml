@@ -54,8 +54,8 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - vector-sized-1.0.0.0
-- backprop-0.1.5.0
-- hmatrix-backprop-0.1.2.0
+- backprop-0.2.0.0
+- hmatrix-backprop-0.1.2.1
 # - groups-0.4.1.0
 
 # Override default flag values for local packages and extra-deps

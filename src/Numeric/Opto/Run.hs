@@ -23,8 +23,6 @@ import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State
 import           Data.Maybe
-import           Data.Semigroup
-import           Numeric.Backprop.Tuple
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
@@ -131,9 +129,18 @@ optoLoop lim batch initXVar updateXVar readXVar xVar updateState stop = repeatLi
         (scaleOne @c @a,) <$> readXVar v
 
 mean :: (Foldable t, Fractional a) => t a -> a
-mean = uncurryT2 go . getSum . foldMap (\x -> Sum (T2 x 1))
+mean = go . foldMap (`Sum2` 1)
   where
-    go x n = x / fromInteger n
+    go (Sum2 x n) = x / fromInteger n
+
+data Sum2 a b = Sum2 !a !b
+
+instance (Num a, Num b) => Semigroup (Sum2 a b) where
+    Sum2 x1 y1 <> Sum2 x2 y2 = Sum2 (x1 + x2) (y1 + y2)
+
+instance (Num a, Num b) => Monoid (Sum2 a b) where
+    mappend = (<>)
+    mempty = Sum2 0 0
 
 runOptoManyParallel
     :: (MonadUnliftIO m, MonadPlus m, Fractional a)

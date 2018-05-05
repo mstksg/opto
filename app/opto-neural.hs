@@ -14,7 +14,7 @@
 
 import           Control.DeepSeq
 import           Control.Exception
-import           Control.Lens hiding                          ((<.>))
+import           Control.Lens hiding                   ((<.>))
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
@@ -28,21 +28,21 @@ import           Data.Primitive.MutVar
 import           Data.Time
 import           Data.Traversable
 import           Data.Tuple
-import           GHC.Generics                                 (Generic)
+import           GHC.Generics                          (Generic)
 import           GHC.TypeLits
 import           Numeric.Backprop
-import           Numeric.LinearAlgebra.Static.Backprop hiding ((&))
+import           Numeric.LinearAlgebra.Static.Backprop
 import           Numeric.OneLiner
-import           Numeric.Opto hiding                          ((<.>))
+import           Numeric.Opto hiding                   ((<.>))
 import           System.Environment
-import           System.FilePath hiding                       ((<.>))
+import           System.FilePath hiding                ((<.>))
 import           Text.Printf
-import qualified Data.Conduit.Combinators                     as C
-import qualified Data.Text                                    as T
-import qualified Data.Vector.Generic                          as VG
-import qualified Numeric.LinearAlgebra                        as HM
-import qualified Numeric.LinearAlgebra.Static                 as H
-import qualified System.Random.MWC                            as MWC
+import qualified Data.Conduit.Combinators              as C
+import qualified Data.Text                             as T
+import qualified Data.Vector.Generic                   as VG
+import qualified Numeric.LinearAlgebra                 as HM
+import qualified Numeric.LinearAlgebra.Static          as H
+import qualified System.Random.MWC                     as MWC
 
 data Net = N { _weights1 :: !(L 250 784)
              , _bias1    :: !(R 250)
@@ -208,3 +208,5 @@ instance MWC.Variate Net where
     uniformR (l, h) g = (\x -> x * (h - l) + l) <$> MWC.uniform g
 
 instance NFData Net
+
+instance Backprop Net

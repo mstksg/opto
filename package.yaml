@@ -28,7 +28,7 @@ dependencies:
 - vector
 - mwc-random
 - conduit
-- backprop >= 0.1.5
+- backprop >= 0.2
 
 ghc-options:
 - -Wall
@@ -64,7 +64,6 @@ executables:
     - mnist-idx
     - one-liner-instances
     - opto
-    - split
     - time
     - text
 
