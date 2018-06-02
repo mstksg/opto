@@ -28,7 +28,6 @@ import           Data.Semigroup
 import           Data.Type.Length
 import           GHC.TypeLits
 import           Generics.OneLiner
--- import           Numeric.Backprop.Tuple
 import           Numeric.Opto.Ref
 import           Type.Class.Known
 import           Type.Family.List
