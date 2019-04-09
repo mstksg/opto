@@ -17,7 +17,10 @@ module Numeric.Opto.Optimizer (
   ) where
 
 import           Control.Monad.Primitive
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Maybe
 import           Data.Default
+import           Data.Maybe
 import           Data.Primitive.MutVar
 import           Data.Type.Product
 import           Data.Type.ZipProd
@@ -101,16 +104,17 @@ adam Adam{..} gr =
                      :: ZipProd (RefVal m)
                                 '[c                     ,a,a]
                                 '[MutVar (PrimState m) c,v,v]
-            , oUpdate = \rSs x -> do
+            , oUpdate = \rSs x -> fmap fromJust . runMaybeT $ do
                 RVr rT :<< RVr rM :<< RVr rV :<< ZPØ <- return rSs
-                rM .*= adamDecay1
-                rV .*= adamDecay2
-                g <- gr x
-                rM .*+= (1 - adamDecay1, g)
-                rV .*+= (1 - adamDecay2, g * g)
-                m ::< v ::< Ø <- readRefs (tailZP rSs)
-                t <- updateRef' rT $ \t0 -> let t1 = t0 + 1
-                                            in  (t1, t1)
+                lift $ do
+                  rM .*= adamDecay1
+                  rV .*= adamDecay2
+                  g <- gr x
+                  rM .*+= (1 - adamDecay1, g)
+                  rV .*+= (1 - adamDecay2, g * g)
+                m ::< v ::< Ø <- lift $ readRefs (tailZP rSs)
+                t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
+                                                   in  (t1, t1)
                 let mHat = recip (1 - adamDecay1 ** t) .* m
                     vHat = recip (1 - adamDecay2 ** t) .* v
                 return ( -adamStep
@@ -149,19 +153,20 @@ adaMax AdaMax{..} gr =
                      :: ZipProd (RefVal m)
                                 '[c,a,c]
                                 '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
-            , oUpdate = \rSs x -> do
+            , oUpdate = \rSs x -> fmap fromJust . runMaybeT $ do
                 RVr rT :<< RVr rM :<< RVr rU :<< ZPØ <- return rSs
-                rM .*= adaMaxDecay1
-                g <- gr x
-                rM .*+= (1 - adaMaxDecay1, g)
-                t <- updateRef' rT $ \t0 ->
-                    let t1 = t0 + 1
-                    in  (t1, t1)
-                m <- readRef rM
-                u <- updateRef' rU $ \u0 ->
-                    let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
-                    in  (u1, u1)
-                return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
-                       , m
-                       )
+                lift $ do
+                  rM .*= adaMaxDecay1
+                  g <- gr x
+                  rM .*+= (1 - adaMaxDecay1, g)
+                  t <- updateRef' rT $ \t0 ->
+                      let t1 = t0 + 1
+                      in  (t1, t1)
+                  m <- readRef rM
+                  u <- updateRef' rU $ \u0 ->
+                      let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
+                      in  (u1, u1)
+                  return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
+                         , m
+                         )
             }

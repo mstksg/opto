@@ -25,7 +25,7 @@ dependencies:
 - hmatrix
 - primitive
 - transformers
-- vector
+- vector >= 0.12.0.2
 - mwc-random
 - conduit
 - backprop >= 0.2

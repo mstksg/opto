@@ -21,20 +21,16 @@ module Control.Monad.Sample (
   , saRef, saState, saConduit
   ) where
 
--- import           Control.Monad.Trans.State
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.Primitive
 import           Control.Monad.State
-import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.Reader
 import           Data.Bifunctor
 import           Data.Conduit
 import           Data.Foldable
-import           Data.Functor.Identity
-import           Data.Profunctor
 import           Data.Tuple
 import           Numeric.Opto.Ref
 import qualified Data.Vector.Generic             as VG

@@ -25,12 +25,9 @@ import           Data.Foldable
 import           Data.Function
 import           Data.Maybe
 import           Data.Semigroup
-import           Data.Type.Length
 import           GHC.TypeLits
 import           Generics.OneLiner
 import           Numeric.Opto.Ref
-import           Type.Class.Known
-import           Type.Family.List
 import qualified Data.Vector.Generic               as VG
 import qualified Data.Vector.Generic.Mutable.Sized as SVGM
 import qualified Data.Vector.Generic.Sized         as SVG
