@@ -24,23 +24,65 @@ traverseZP1 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x
 traverseZP2 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g y)) -> ZipProd f as bs -> h (Rec g bs)
 
 module Numeric.Opto.Ref
+
+-- | Abstraction over mutable references of types. A <tt><a>Ref</a> m a
+--   v</tt> means that a <tt>v</tt> is a mutable reference to an
+--   <tt>a</tt>, and we may update<i>write</i>modify <tt>v</tt> in context
+--   <tt>m</tt>.
+--   
+--   This allows us to reat mutable vectors and in-place mutable numbers or
+--   records in the same way.
 class Monad m => Ref m a v | v -> a
-newRef :: Ref m a v => a -> m v
-readRef :: Ref m a v => v -> m a
-writeRef :: Ref m a v => v -> a -> m ()
+
+-- | Initialize a mutable reference with a given value
+thawRef :: Ref m a v => a -> m v
+
+-- | Read an immutable value back from a mutable reference
+freezeRef :: Ref m a v => v -> m a
+
+-- | Copy an immutable value into a mutable reference
+copyRef :: Ref m a v => v -> a -> m ()
+
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference.
 modifyRef :: Ref m a v => v -> (a -> a) -> m ()
+
+-- | <a>modifyRef</a>, but forces the result before storing it back in the
+--   reference.
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference, returning a result value from that function.
 updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
+
+-- | <a>updateRef</a>, but forces the updated value before storing it back
+--   in the reference.
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
+
+-- | <tt><a>RefVal</a> m a v</tt> is a wrapper over a pure value <tt>a</tt>
+--   that can be stored in a mutable reference <tt>v</tt>.
 data RefVal :: (Type -> Type) -> Type -> Type -> Type
 [RVl] :: Ref m a v => a -> RefVal m a v
+
+-- | <tt><a>RefVar</a> m a v</tt> is a wrapper over a mutable reference
+--   <tt>v</tt> that contains a value <tt>a</tt>.
 data RefVar :: (Type -> Type) -> Type -> Type -> Type
 [RVr] :: Ref m a v => v -> RefVar m a v
+
+-- | Store multiple <a>RefVal</a>s
 type RefVals m = ZipProd (RefVal m)
+
+-- | Store multiple <a>RefVar</a>s
 type RefVars m = ZipProd (RefVar m)
-initRefs :: Applicative m => ZipProd (RefVal m) as vs -> m (ZipProd (RefVar m) as vs)
-readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Rec Identity as)
-pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefVal m) as vs)
+
+-- | <a>thawRef</a>, but over a collection <a>RefVals</a>.
+thawRefs :: Applicative m => RefVals m as vs -> m (RefVars m as vs)
+
+-- | <a>freezeRef</a>, but over a collection <a>RefVars</a>.
+freezeRefs :: Applicative m => RefVars m as vs -> m (Rec Identity as)
+
+-- | A version of <a>freezeRefs</a> that returns <a>RefVals</a>.
+pullRefs :: Applicative m => RefVars m as vs -> m (RefVals m as vs)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
 instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v Data.Type.Equality.~ mv, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
