@@ -52,17 +52,17 @@ runOptoMany
     -> OptoM m v a
     -> m (a, OptoM m v a)
 runOptoMany RO{..} x0 MkOptoM{..} = do
-    rSs <- initRefs oInit
-    rX <- newRef @m @a @v x0
+    rSs <- thawRefs oInit
+    rX  <- thawRef @m @a @v x0
     optoLoop roLimit roBatch
-        (newRef @m @a @v)
+        (thawRef @m @a @v)
         (.*+=)
-        readRef
+        freezeRef
         rX
         (oUpdate rSs)
         roStopCond
     o' <- flip MkOptoM oUpdate <$> pullRefs rSs
-    (, o') <$> readRef rX
+    (, o') <$> freezeRef rX
 
 evalOptoMany
     :: forall m v a. Alternative m
@@ -79,17 +79,17 @@ runOpto
     -> OptoM m v a
     -> m (a, OptoM m v a)
 runOpto RO{..} x0 MkOptoM{..} = do
-    rSs <- initRefs oInit
-    rX <- newRef @m @a @v x0
+    rSs <- thawRefs oInit
+    rX  <- thawRef @m @a @v x0
     _ <- runMaybeT $ optoLoop roLimit roBatch
-            (lift . newRef @m @a @v)
+            (lift . thawRef @m @a @v)
             (\v -> lift . (v .*+=))
-            (lift . readRef)
+            (lift . freezeRef)
             rX
             (lift . oUpdate rSs)
             (\d -> lift . roStopCond d)
     o' <- flip MkOptoM oUpdate <$> pullRefs rSs
-    (, o') <$> readRef rX
+    (, o') <$> freezeRef rX
 
 evalOpto
     :: forall m v a. Monad m

@@ -113,7 +113,7 @@ adam Adam{..} gr =
                   g <- gr x
                   rM .*+= (1 - adamDecay1, g)
                   rV .*+= (1 - adamDecay2, g * g)
-                Identity m :& Identity v :& RNil <- lift $ readRefs (tailZP rSs)
+                Identity m :& Identity v :& RNil <- lift $ freezeRefs (tailZP rSs)
                 t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
                                                    in  (t1, t1)
                 let mHat = recip (1 - adamDecay1 ** t) .* m
@@ -163,7 +163,7 @@ adaMax AdaMax{..} gr =
                   t <- updateRef' rT $ \t0 ->
                       let t1 = t0 + 1
                       in  (t1, t1)
-                  m <- readRef rM
+                  m <- freezeRef rM
                   u <- updateRef' rU $ \u0 ->
                       let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
                       in  (u1, u1)

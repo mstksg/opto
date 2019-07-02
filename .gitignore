@@ -1,3 +1,5 @@
 .stack-work/
 opto.cabal
+*-hi
+
 *~

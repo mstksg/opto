@@ -9,7 +9,7 @@
 module Numeric.Opto.Ref (
     Ref(..)
   , RefVal(..), RefVar(..), RefVals, RefVars
-  , initRefs, readRefs, pullRefs
+  , thawRefs, freezeRefs, pullRefs
   ) where
 
 import           Control.Monad.Primitive
@@ -24,60 +24,87 @@ import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
 import qualified Data.Vector.Mutable       as MV
 
+-- | Abstraction over mutable references of types.  A @'Ref' m a v@ means
+-- that a @v@ is a mutable reference to an @a@, and we may
+-- update/write/modify @v@ in context @m@.
+--
+-- This allows us to reat mutable vectors and in-place mutable numbers or
+-- records in the same way.
 class Monad m => Ref m a v | v -> a where
-    newRef     :: a -> m v
-    readRef    :: v -> m a
-    readRef v = updateRef v $ \x -> (x,x)
-    writeRef   :: v -> a -> m ()
-    writeRef v x = modifyRef v (const x)
+    -- | Initialize a mutable reference with a given value
+    thawRef      :: a -> m v
+    -- | Read an immutable value back from a mutable reference
+    freezeRef    :: v -> m a
+    freezeRef v = updateRef v $ \x -> (x,x)
+    -- | Copy an immutable value into a mutable reference
+    copyRef   :: v -> a -> m ()
+    copyRef v x = modifyRef v (const x)
+    -- | Apply a pure function on an immutable value onto a value stored in
+    -- a mutable reference.
     modifyRef  :: v -> (a -> a) -> m ()
     modifyRef v f = void $ updateRef v ((,()) . f)
+    -- | 'modifyRef', but forces the result before storing it back in the
+    -- reference.
     modifyRef' :: v -> (a -> a) -> m ()
     modifyRef' v f = void $ updateRef' v ((,()) . f)
+    -- | Apply a pure function on an immutable value onto a value stored in
+    -- a mutable reference, returning a result value from that function.
     updateRef  :: v -> (a -> (a, b)) -> m b
     updateRef v f = do
-        (x, y) <- f <$> readRef v
-        writeRef v x
+        (x, y) <- f <$> freezeRef v
+        copyRef v x
         return y
+    -- | 'updateRef', but forces the updated value before storing it back in the
+    -- reference.
     updateRef' :: v -> (a -> (a, b)) -> m b
     updateRef' v f = do
-        (x, y) <- f <$> readRef v
-        x `seq` writeRef v x
+        (x, y) <- f <$> freezeRef v
+        x `seq` copyRef v x
         return y
-    {-# MINIMAL newRef, (writeRef | updateRef, updateRef') #-}
+    {-# MINIMAL thawRef, (copyRef | updateRef, updateRef') #-}
 
+-- | @'RefVal' m a v@ is a wrapper over a pure value @a@ that can be
+-- stored in a mutable reference @v@.
 data RefVal :: (Type -> Type) -> Type -> Type -> Type where
     RVl :: Ref m a v => a -> RefVal m a v
 
+-- | @'RefVar' m a v@ is a wrapper over a mutable reference @v@ that
+-- contains a value @a@.
 data RefVar :: (Type -> Type) -> Type -> Type -> Type where
     RVr :: Ref m a v => v -> RefVar m a v
 
+-- | Store multiple 'RefVal's
 type RefVals m = ZipProd (RefVal m)
+
+-- | Store multiple 'RefVar's
 type RefVars m = ZipProd (RefVar  m)
 
-initRefs :: Applicative m => ZipProd (RefVal m) as vs -> m (ZipProd (RefVar m) as vs)
-initRefs = traverseZP $ \(RVl i) -> RVr <$> newRef i
+-- | 'thawRef', but over a collection 'RefVals'.
+thawRefs :: Applicative m => RefVals m as vs -> m (RefVars m as vs)
+thawRefs = traverseZP $ \(RVl i) -> RVr <$> thawRef i
 
-readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Rec Identity as)
-readRefs = traverseZP1 $ \(RVr v) -> Identity <$> readRef v
+-- | 'freezeRef', but over a collection 'RefVars'.
+freezeRefs :: Applicative m => RefVars m as vs -> m (Rec Identity as)
+freezeRefs = traverseZP1 $ \(RVr v) -> Identity <$> freezeRef v
 
-pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefVal m) as vs)
-pullRefs = traverseZP $ \(RVr v) -> RVl <$> readRef v
+-- | A version of 'freezeRefs' that returns 'RefVals'.
+pullRefs :: Applicative m => RefVars m as vs -> m (RefVals m as vs)
+pullRefs = traverseZP $ \(RVr v) -> RVl <$> freezeRef v
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
-    newRef     = newMutVar
-    readRef    = readMutVar
-    writeRef   = writeMutVar
+    thawRef    = newMutVar
+    freezeRef  = readMutVar
+    copyRef    = writeMutVar
     modifyRef  = modifyMutVar
     modifyRef' = modifyMutVar'
     updateRef  = atomicModifyMutVar
     updateRef' = atomicModifyMutVar'
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) where
-    newRef    = V.thaw
-    readRef   = V.freeze
-    writeRef  = V.copy
-    modifyRef r f = V.copy r . f =<< V.freeze r
+    thawRef        = V.thaw
+    freezeRef      = V.freeze
+    copyRef        = V.copy
+    modifyRef r f  = V.copy r . f =<< V.freeze r
     modifyRef' r f = do
       v <- f <$> V.freeze r
       v `seq` V.copy r v
@@ -92,10 +119,10 @@ instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) w
 
 instance (PrimMonad m, VG.Mutable v ~ mv, PrimState m ~ s, VG.Vector v a)
       => Ref m (SVG.Vector v n a) (SVG.MVector mv n s a) where
-    newRef    = SVG.thaw
-    readRef   = SVG.freeze
-    writeRef  = SVG.copy
-    modifyRef r f = SVG.copy r . f =<< SVG.freeze r
+    thawRef        = SVG.thaw
+    freezeRef      = SVG.freeze
+    copyRef        = SVG.copy
+    modifyRef r f  = SVG.copy r . f =<< SVG.freeze r
     modifyRef' r f = do
       v <- f <$> SVG.freeze r
       v `seq` SVG.copy r v
