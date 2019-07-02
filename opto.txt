@@ -23,12 +23,14 @@ mapZP :: (forall x y. f x y -> g x y) -> ZipProd f as bs -> ZipProd g as bs
 traverseZP1 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x)) -> ZipProd f as bs -> h (Rec g as)
 traverseZP2 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g y)) -> ZipProd f as bs -> h (Rec g bs)
 
+
+-- | Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref
 
--- | Abstraction over mutable references of types. A <tt><a>Ref</a> m a
---   v</tt> means that a <tt>v</tt> is a mutable reference to an
---   <tt>a</tt>, and we may update<i>write</i>modify <tt>v</tt> in context
---   <tt>m</tt>.
+-- | Abstraction over types of mutable references for values. A
+--   <tt><a>Ref</a> m a v</tt> means that a <tt>v</tt> is a mutable
+--   reference to an <tt>a</tt>, and we may update<i>write</i>modify
+--   <tt>v</tt> in context <tt>m</tt>.
 --   
 --   This allows us to reat mutable vectors and in-place mutable numbers or
 --   records in the same way.
@@ -246,39 +248,63 @@ sampling :: MonadSample r m => (r -> Grad m a) -> Grad m a
 pureGrad :: Applicative m => (a -> Diff a) -> Grad m a
 pureSampling :: MonadSample r m => (r -> a -> Diff a) -> Grad m a
 
+
+-- | Functions to <i>run</i> optimiziers.
 module Numeric.Opto.Run
+
+-- | Options for running an optimizer.
 data RunOpts m a
 RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
 
--- | Construct a <a>RunOpts</a> with no stopping condition
-pattern RO' :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
+-- | Construct a <a>RunOpts</a> without a stopping condition.
+noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
+
+-- | Optimize an <tt>a</tt> many times, until the stopping condition or
+--   limit is reached. Return the updated optimizer state.
 runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+
+-- | Optimize an <tt>a</tt> many times, until the stopping condition or
+--   limit is reached. Forget the updated optimizer state.
 evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
+
+-- | Perform a single optimizer step, returning the updated optimizer
+--   state.
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+
+-- | Perform a single optimizer step, forgetting the updated optimizer
+--   state.
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
+
+-- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
 PO :: Maybe Int -> Int -> ParallelOpts
 [poThreads] :: ParallelOpts -> Maybe Int
 
 -- | how much each thread will process before regrouping
 [poSplitRuns] :: ParallelOpts -> Int
+
+-- | Optimize an <tt>a</tt> many times in parallel, and aggregate all the
+--   results together by taking the mean. Returns all of the updated
+--   optimizer states from each thread.
 runOptoManyParallel :: (MonadUnliftIO m, MonadPlus m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
+
+-- | Preform a single optimization batch in parallel, returning all of the
+--   updated optimizer states from each thread.
 runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
 
 module Numeric.Opto.Run.Conduit
+
+-- | Options for running an optimizer.
 data RunOpts m a
 RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
-
--- | Construct a <a>RunOpts</a> with no stopping condition
-pattern RO' :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
 --   <i>sampling</i> optimizer, give a conduit that processes upstream
@@ -302,6 +328,8 @@ runOptoConduitChunk :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a ->
 -- | <a>runOptoConduitChunk</a>, without returning the updated optimizer
 --   state.
 runOptoConduitChunk_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
+
+-- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
 PO :: Maybe Int -> Int -> ParallelOpts
 [poThreads] :: ParallelOpts -> Maybe Int
@@ -376,8 +404,51 @@ instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optim
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Nesterov c)
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Momentum c)
 
+
+-- | Generate gradients usable with <a>Numeric.Opto</a> using the
+--   <i>backprop</i> library.
 module Numeric.Opto.Backprop
+
+-- | Turn a simple <tt>a -&gt; b</tt> function into a <tt><a>Grad</a> m
+--   a</tt>.
 bpGrad :: (Monad m, Backprop a, Backprop b) => (forall s. Reifies s W => BVar s a -> BVar s b) -> Grad m a
+
+-- | Turn a <tt>a -&gt; b</tt> function parameterized on <tt>r</tt> into a
+--   <tt><a>Grad</a> m a</tt>.
 bpGradSample :: (MonadSample r m, Backprop a, Backprop b) => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b) -> Grad m a
 
 module Numeric.Opto
+
+-- | Abstraction over types of mutable references for values. A
+--   <tt><a>Ref</a> m a v</tt> means that a <tt>v</tt> is a mutable
+--   reference to an <tt>a</tt>, and we may update<i>write</i>modify
+--   <tt>v</tt> in context <tt>m</tt>.
+--   
+--   This allows us to reat mutable vectors and in-place mutable numbers or
+--   records in the same way.
+class Monad m => Ref m a v | v -> a
+
+-- | Initialize a mutable reference with a given value
+thawRef :: Ref m a v => a -> m v
+
+-- | Read an immutable value back from a mutable reference
+freezeRef :: Ref m a v => v -> m a
+
+-- | Copy an immutable value into a mutable reference
+copyRef :: Ref m a v => v -> a -> m ()
+
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference.
+modifyRef :: Ref m a v => v -> (a -> a) -> m ()
+
+-- | <a>modifyRef</a>, but forces the result before storing it back in the
+--   reference.
+modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference, returning a result value from that function.
+updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
+
+-- | <a>updateRef</a>, but forces the updated value before storing it back
+--   in the reference.
+updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
