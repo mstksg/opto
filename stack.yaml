@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: nightly-2019-04-08
+resolver: nightly-2019-07-02
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,20 +37,10 @@ resolver: nightly-2019-04-08
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-# - location:
-#     git: git@github.com:haskell/vector.git
-#     commit: cc5460dfb7a2fb099760155ca46f96c05a1b81b7
-#   extra-dep: true
-# - location:
-#     git: git@github.com:diagrams/monoid-extras.git
-#     commit: 1df9682752dac8c67392d2e80bb09cb7073f3d0b
-#   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps:
-- git: https://github.com/mstksg/type-combinators.git
-  commit: 50334ab6bc3e5c3aee53c881a027f687fde13fa4
+extra-deps: []
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

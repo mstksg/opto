@@ -14,12 +14,11 @@ module Numeric.Opto.Ref (
 
 import           Control.Monad.Primitive
 import           Data.Functor
+import           Data.Functor.Identity
 import           Data.Kind
 import           Data.Primitive.MutVar
-import           Data.Type.Combinator
-import           Data.Type.Conjunction
-import           Data.Type.Product
 import           Data.Type.ZipProd
+import           Data.Vinyl.Core
 import qualified Data.Vector               as V
 import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
@@ -59,19 +58,11 @@ type RefVars m = ZipProd (RefVar  m)
 initRefs :: Applicative m => ZipProd (RefVal m) as vs -> m (ZipProd (RefVar m) as vs)
 initRefs = traverseZP $ \(RVl i) -> RVr <$> newRef i
 
-readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
-readRefs = traverseZP1 $ \(RVr v) -> I <$> readRef v
+readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Rec Identity as)
+readRefs = traverseZP1 $ \(RVr v) -> Identity <$> readRef v
 
 pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefVal m) as vs)
 pullRefs = traverseZP $ \(RVr v) -> RVl <$> readRef v
-
-instance Monad m => Ref m (ZipProd (RefVal m) as vs) (ZipProd (RefVar m) as vs) where
-    newRef   = initRefs
-    readRef  = traverseZP $ \(RVr v) -> RVl <$> readRef v
-    writeRef vs xs = traverseZP_
-        (\(Cur (Uncur (RVr v) :&: Uncur (RVl x))) -> writeRef v x)
-        (zipZipProd vs xs)
-
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
     newRef     = newMutVar

@@ -11,13 +11,15 @@ module Data.Type.ZipProd (
   , onlyZP, headZP, tailZP
   , traverseZP, traverseZP_, mapZP
   , traverseZP1, traverseZP2
-  , zipZipProd
+  -- , zipZipProd
   ) where
 
+-- import           Data.Type.Combinator
+-- import           Data.Type.Conjunction
+-- import           Data.Type.Product
+import           Data.Functor.Identity
 import           Data.Kind
-import           Data.Type.Combinator
-import           Data.Type.Product
-import           Data.Type.Conjunction
+import           Data.Vinyl.Core
 
 data ZipProd :: (Type -> Type -> Type) -> [Type] -> [Type] -> Type where
     ZPØ   :: ZipProd f '[] '[]
@@ -61,38 +63,38 @@ mapZP
     :: (forall x y. f x y -> g x y)
     -> ZipProd f as bs
     -> ZipProd g as bs
-mapZP f = getI . traverseZP (I . f)
+mapZP f = runIdentity . traverseZP (Identity . f)
 
 traverseZP1
     :: forall h f g as bs. Applicative h
     => (forall x y. f x y -> h (g x))
     -> ZipProd f as bs
-    -> h (Prod g as)
+    -> h (Rec g as)
 traverseZP1 f = go
   where
-    go :: ZipProd f cs ds -> h (Prod g cs)
+    go :: ZipProd f cs ds -> h (Rec g cs)
     go = \case
-      ZPØ      -> pure Ø
-      x :<< xs -> (:<) <$> f x <*> go xs
+      ZPØ      -> pure RNil
+      x :<< xs -> (:&) <$> f x <*> go xs
 
 traverseZP2
     :: forall h f g as bs. Applicative h
     => (forall x y. f x y -> h (g y))
     -> ZipProd f as bs
-    -> h (Prod g bs)
+    -> h (Rec g bs)
 traverseZP2 f = go
   where
-    go :: ZipProd f cs ds -> h (Prod g ds)
+    go :: ZipProd f cs ds -> h (Rec g ds)
     go = \case
-      ZPØ      -> pure Ø
-      x :<< xs -> (:<) <$> f x <*> go xs
+      ZPØ      -> pure RNil
+      x :<< xs -> (:&) <$> f x <*> go xs
 
-zipZipProd
-    :: ZipProd f as bs
-    -> ZipProd g as bs
-    -> ZipProd (Cur (Uncur f :&: Uncur g)) as bs
-zipZipProd = \case
-    ZPØ -> \case
-      ZPØ -> ZPØ
-    x :<< xs -> \case
-      y :<< ys -> Cur (Uncur x :&: Uncur y) :<< zipZipProd xs ys
+-- zipZipProd
+--     :: ZipProd f as bs
+--     -> ZipProd g as bs
+--     -> ZipProd (Cur (Uncur f :&: Uncur g)) as bs
+-- zipZipProd = \case
+--     ZPØ -> \case
+--       ZPØ -> ZPØ
+--     x :<< xs -> \case
+--       y :<< ys -> Cur (Uncur x :&: Uncur y) :<< zipZipProd xs ys

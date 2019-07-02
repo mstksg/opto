@@ -39,7 +39,6 @@ library:
   - finite-typelits
   - one-liner
   - profunctors
-  - type-combinators
   - typelits-witnesses
   - vector-sized >= 1.0
   - unliftio
@@ -47,6 +46,7 @@ library:
   - stm
   - stm-chans
   - mtl
+  - vinyl
 
 executables:
   opto-neural:

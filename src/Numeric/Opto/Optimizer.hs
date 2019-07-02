@@ -20,10 +20,11 @@ import           Control.Monad.Primitive
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Default
+import           Data.Functor.Identity
 import           Data.Maybe
 import           Data.Primitive.MutVar
-import           Data.Type.Product
 import           Data.Type.ZipProd
+import           Data.Vinyl.Core
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
@@ -112,7 +113,7 @@ adam Adam{..} gr =
                   g <- gr x
                   rM .*+= (1 - adamDecay1, g)
                   rV .*+= (1 - adamDecay2, g * g)
-                m ::< v ::< Ø <- lift $ readRefs (tailZP rSs)
+                Identity m :& Identity v :& RNil <- lift $ readRefs (tailZP rSs)
                 t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
                                                    in  (t1, t1)
                 let mHat = recip (1 - adamDecay1 ** t) .* m
