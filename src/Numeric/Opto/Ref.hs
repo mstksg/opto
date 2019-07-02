@@ -6,6 +6,16 @@
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+-- |
+-- Module      : Numeric.Opto.Ref
+-- Copyright   : (c) Justin Le 2019
+-- License     : BSD3
+--
+-- Maintainer  : justin@jle.im
+-- Stability   : experimental
+-- Portability : non-portable
+--
+-- Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref (
     Ref(..)
   , RefVal(..), RefVar(..), RefVals, RefVars
@@ -24,8 +34,8 @@ import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
 import qualified Data.Vector.Mutable       as MV
 
--- | Abstraction over mutable references of types.  A @'Ref' m a v@ means
--- that a @v@ is a mutable reference to an @a@, and we may
+-- | Abstraction over types of mutable references for values.  A @'Ref'
+-- m a v@ means that a @v@ is a mutable reference to an @a@, and we may
 -- update/write/modify @v@ in context @m@.
 --
 -- This allows us to reat mutable vectors and in-place mutable numbers or

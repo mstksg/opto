@@ -138,7 +138,7 @@ main = MWC.withSystemRandom $ \g -> do
        .| C.stdout
   where
     gr (x, y) = gradBP (netErr (constVar x) (constVar y))
-    o = RO' Nothing Nothing
+    o = noStop Nothing Nothing
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
