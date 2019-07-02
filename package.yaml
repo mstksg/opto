@@ -39,13 +39,9 @@ library:
   dependencies:
   - finite-typelits
   - one-liner
-  - profunctors
-  - typelits-witnesses
   - vector-sized >= 1.0
   - unliftio
   - unliftio-core
-  - stm
-  - stm-chans
   - mtl
   - vinyl
 
