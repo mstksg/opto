@@ -13,15 +13,15 @@ module Data.Type.ZipProd
 data ZipProd :: (Type -> Type -> Type) -> [Type] -> [Type] -> Type
 [ZPØ] :: ZipProd f '[] '[]
 [:<<] :: f a b -> ZipProd f as bs -> ZipProd f (a : as) (b : bs)
+infixr 5 :<<
 onlyZP :: f a b -> ZipProd f '[a] '[b]
 headZP :: ZipProd f (a : as) (b : bs) -> f a b
 tailZP :: ZipProd f (a : as) (b : bs) -> ZipProd f as bs
 traverseZP :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x y)) -> ZipProd f as bs -> h (ZipProd g as bs)
 traverseZP_ :: forall h f as bs. Applicative h => (forall x y. f x y -> h ()) -> ZipProd f as bs -> h ()
 mapZP :: (forall x y. f x y -> g x y) -> ZipProd f as bs -> ZipProd g as bs
-traverseZP1 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x)) -> ZipProd f as bs -> h (Prod g as)
-traverseZP2 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g y)) -> ZipProd f as bs -> h (Prod g bs)
-zipZipProd :: ZipProd f as bs -> ZipProd g as bs -> ZipProd (Cur (Uncur f :&: Uncur g)) as bs
+traverseZP1 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x)) -> ZipProd f as bs -> h (Rec g as)
+traverseZP2 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g y)) -> ZipProd f as bs -> h (Rec g bs)
 
 module Numeric.Opto.Ref
 class Monad m => Ref m a v | v -> a
@@ -39,12 +39,11 @@ data RefVar :: (Type -> Type) -> Type -> Type -> Type
 type RefVals m = ZipProd (RefVal m)
 type RefVars m = ZipProd (RefVar m)
 initRefs :: Applicative m => ZipProd (RefVal m) as vs -> m (ZipProd (RefVar m) as vs)
-readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Tuple as)
+readRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (Rec Identity as)
 pullRefs :: Applicative m => ZipProd (RefVar m) as vs -> m (ZipProd (RefVal m) as vs)
-instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m (Data.Type.ZipProd.ZipProd (Numeric.Opto.Ref.RefVal m) as vs) (Data.Type.ZipProd.ZipProd (Numeric.Opto.Ref.RefVar m) as vs)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
-instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v ~ mv, Control.Monad.Primitive.PrimState m ~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
+instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v Data.Type.Equality.~ mv, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
 
 module Control.Monad.Sample
 
@@ -61,13 +60,14 @@ flushSamples :: MonadSample r m => m [r]
 --   items from the pool. Is O(N) memory.
 sampleReservoir :: forall m v r. (PrimMonad m, MonadSample r m, Vector v r) => Int -> Gen (PrimState m) -> m (v r)
 data SampleAct m r
-SA :: m (Maybe r) -> forall v. Vector v r => Int -> m (Maybe (v r)) -> SampleAct m r
+SA :: m (Maybe r) -> (forall v. Vector v r => Int -> m (Maybe (v r))) -> SampleAct m r
 [saSample] :: SampleAct m r -> m (Maybe r)
 [saSampleN] :: SampleAct m r -> forall v. Vector v r => Int -> m (Maybe (v r))
 newtype SampleT r m a
 ST :: MaybeT (ReaderT (SampleAct m r) m) a -> SampleT r m a
 [sampleTReader] :: SampleT r m a -> MaybeT (ReaderT (SampleAct m r) m) a
-runSampleT :: () => SampleT r m a -> SampleAct m r -> m Maybe a
+pattern SampleT :: (SampleAct m r -> m (Maybe a)) -> SampleT r m a
+runSampleT :: () => SampleT r m a -> SampleAct m r -> m (Maybe a)
 simpleSA :: forall m r. Monad m => m (Maybe r) -> SampleAct m r
 saRef :: Ref m [r] v => v -> SampleAct m r
 saState :: MonadState [r] m => SampleAct m r
@@ -88,6 +88,7 @@ class Additive a
 addZero :: Additive a => a
 (.+.) :: (Additive a, Num a) => a -> a -> a
 addZero :: (Additive a, Num a) => a
+infixl 6 .+.
 sumAdditive :: (Additive a, Foldable t) => t a -> a
 gAdd :: (ADTRecord a, Constraints a Additive) => a -> a -> a
 gAddZero :: (ADTRecord a, Constraints a Additive) => a
@@ -96,6 +97,7 @@ class (Num c, Additive a) => Scaling c a | a -> c
 scaleOne :: Scaling c a => c
 (.*) :: (Scaling c a, ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
 scaleOne :: (Scaling c a, Num c) => c
+infixl 7 .*
 gScale :: forall c a. (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
 class Scaling c a => Metric c a
 
@@ -134,6 +136,7 @@ norm_2 :: (Metric c a, Floating c) => a -> c
 
 -- | Sum of squared components
 quadrance :: (Metric c a, ADT a, Constraints a (Metric c)) => a -> c
+infixl 7 <.>
 gNorm_inf :: forall c a. (ADT a, Constraints a (Metric c), Ord c) => a -> c
 gNorm_0 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 gNorm_1 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
@@ -141,12 +144,15 @@ gNorm_2 :: forall c a. (ADT a, Constraints a (Metric c), Floating c) => a -> c
 gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 class (Ref m a v, Additive a) => AdditiveInPlace m v a
 (.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
+infix 4 .+.=
 sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*=) :: ScalingInPlace m v c a => v -> c -> m ()
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
+infix 4 .*=
+infix 4 .*+=
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Update.ScalingInPlace m v GHC.Types.Double GHC.Types.Double
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a, mv ~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.ScalingInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) a (Data.Vector.Generic.Sized.Internal.Vector v n a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, GHC.Num.Num a, mv Data.Type.Equality.~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.ScalingInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) a (Data.Vector.Generic.Sized.Internal.Vector v n a)
 instance (GHC.TypeNats.KnownNat n, Numeric.Opto.Ref.Ref m (Internal.Static.R n) v) => Numeric.Opto.Update.ScalingInPlace m v GHC.Types.Double (Internal.Static.R n)
 instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k, Numeric.Opto.Ref.Ref m (Internal.Static.L n k) v) => Numeric.Opto.Update.ScalingInPlace m v GHC.Types.Double (Internal.Static.L n k)
 instance (Numeric.Opto.Ref.Ref m (a, b) v, Numeric.Opto.Update.Scaling c a, Numeric.Opto.Update.Scaling c b) => Numeric.Opto.Update.ScalingInPlace m v c (a, b)
@@ -154,7 +160,7 @@ instance (Numeric.Opto.Ref.Ref m (a, b, d) v, Numeric.Opto.Update.Scaling c a, N
 instance (Numeric.Opto.Ref.Ref m (a, b, d, e) v, Numeric.Opto.Update.Scaling c a, Numeric.Opto.Update.Scaling c b, Numeric.Opto.Update.Scaling c d, Numeric.Opto.Update.Scaling c e) => Numeric.Opto.Update.ScalingInPlace m v c (a, b, d, e)
 instance (Numeric.Opto.Ref.Ref m (a, b, d, e, f) v, Numeric.Opto.Update.Scaling c a, Numeric.Opto.Update.Scaling c b, Numeric.Opto.Update.Scaling c d, Numeric.Opto.Update.Scaling c e, Numeric.Opto.Update.Scaling c f) => Numeric.Opto.Update.ScalingInPlace m v c (a, b, d, e, f)
 instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Update.AdditiveInPlace m v GHC.Types.Double
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m ~ s, GHC.Num.Num a, mv ~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.AdditiveInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) (Data.Vector.Generic.Sized.Internal.Vector v n a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, GHC.Num.Num a, mv Data.Type.Equality.~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.AdditiveInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) (Data.Vector.Generic.Sized.Internal.Vector v n a)
 instance (GHC.TypeNats.KnownNat n, Numeric.Opto.Ref.Ref m (Internal.Static.R n) v) => Numeric.Opto.Update.AdditiveInPlace m v (Internal.Static.R n)
 instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k, Numeric.Opto.Ref.Ref m (Internal.Static.L n k) v) => Numeric.Opto.Update.AdditiveInPlace m v (Internal.Static.L n k)
 instance (Numeric.Opto.Ref.Ref m (a, b) v, Numeric.Opto.Update.Additive a, Numeric.Opto.Update.Additive b) => Numeric.Opto.Update.AdditiveInPlace m v (a, b)
@@ -190,7 +196,7 @@ module Numeric.Opto.Core
 type Diff a = a
 type Grad m a = a -> m (Diff a)
 data OptoM :: (Type -> Type) -> Type -> Type -> Type
-[MkOptoM] :: ScalingInPlace m v c a => {oInit :: !(RefVals m ss sVars), oUpdate :: !(RefVars m ss sVars -> a -> m (c, Diff a))} -> OptoM m v a
+[MkOptoM] :: ScalingInPlace m v c a => {oInit :: !RefVals m ss sVars, oUpdate :: !RefVars m ss sVars -> a -> m (c, Diff a)} -> OptoM m v a
 type Opto s = OptoM (ST s)
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (a -> s -> m (c, Diff a, s)) -> OptoM m v a
 fromStateless :: ScalingInPlace m v c a => (a -> m (c, Diff a)) -> OptoM m v a
@@ -200,10 +206,13 @@ pureSampling :: MonadSample r m => (r -> a -> Diff a) -> Grad m a
 
 module Numeric.Opto.Run
 data RunOpts m a
-RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
+RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
+
+-- | Construct a <a>RunOpts</a> with no stopping condition
+pattern RO' :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
@@ -221,10 +230,13 @@ instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum
 
 module Numeric.Opto.Run.Conduit
 data RunOpts m a
-RO :: Diff a -> a -> m Bool -> Maybe Int -> Maybe Int -> RunOpts m a
+RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 [roLimit] :: RunOpts m a -> Maybe Int
 [roBatch] :: RunOpts m a -> Maybe Int
+
+-- | Construct a <a>RunOpts</a> with no stopping condition
+pattern RO' :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
 --   <i>sampling</i> optimizer, give a conduit that processes upstream
