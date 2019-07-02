@@ -21,15 +21,15 @@ category:            Math
 description:         Please see the README on Github at <https://github.com/mstksg/opto#readme>
 
 dependencies:
+- backprop >= 0.2
 - base >= 4.7 && < 5
+- conduit >= 1.3.0
 - data-default
 - hmatrix
+- mwc-random
 - primitive
 - transformers
 - vector >= 0.12.0.2
-- mwc-random
-- conduit >= 1.3.0
-- backprop >= 0.2
 
 ghc-options:
 - -Wall
@@ -38,11 +38,11 @@ library:
   source-dirs: src
   dependencies:
   - finite-typelits
+  - mtl
   - one-liner
-  - vector-sized >= 1.0
   - unliftio
   - unliftio-core
-  - mtl
+  - vector-sized >= 1.0
   - vinyl
 
 executables:

@@ -53,6 +53,11 @@ extra-deps:
 ghc-options:
   "$locals": -ddump-to-file -ddump-hi
 
+build:
+  haddock-arguments:
+    haddock-args:
+    - --optghc=-fdefer-type-errors
+
 # Override default flag values for local packages and extra-deps
 # flags: {}
 
