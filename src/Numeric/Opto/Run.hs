@@ -17,14 +17,15 @@
 --
 -- Functions to /run/ optimiziers.
 module Numeric.Opto.Run (
-  -- * Single-threaded
+  -- * Options
     RunOpts(..), noStop
-  , runOpto, evalOpto
-  , runOptoAlt, evalOptoAlt
-  -- * Parallel
   , ParallelOpts(..)
-  , runOptoParallel
+  -- * Single-threaded
+  , evalOpto, runOpto
+  , evalOptoAlt, runOptoAlt
+  -- * Parallel
   , evalOptoParallel
+  , runOptoParallel
   ) where
 
 import           Control.Applicative
@@ -50,31 +51,32 @@ data RunOpts m a = RO
     }
 
 -- | Options for running an optimizer in a concurrent setting.
-data ParallelOpts = PO { poThreads   :: Maybe Int
-                       , poSplitRuns :: Int         -- ^ how much each thread will process before regrouping
-                       }
+data ParallelOpts = PO
+    { poThreads   :: Maybe Int   -- ^ Number of threads. Will default to max capacity
+    , poSplitRuns :: Int         -- ^ How much each thread will process before regrouping
+    }
 
 
 -- | Construct a 'RunOpts' without a stopping condition.
 noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 noStop = RO (\_ _ -> pure False)
 
--- | A version of 'runOpto', but allowing the stopping condition to take
--- advantage of an underlying 'Alternative' instance, where 'empty'/'mzero'
--- will quit immediately.
+-- | A version of 'runOpto', but allowing the sampling action and stopping
+-- condition to take advantage of an underlying 'Alternative' instance,
+-- where 'empty'/'mzero' will quit immediately.
 runOptoAlt
-    :: forall m v a. MonadPlus m
+    :: MonadPlus m
     => RunOpts m a
     -> a
     -> OptoM m v a
     -> m (a, OptoM m v a)
 runOptoAlt ro x o = runOptoAlt_ ro x o (liftA2 (,))
 
--- | A version of 'evalOpto', but allowing the stopping condition to take
--- advantage of an underlying 'Alternative' instance, where 'empty'/'mzero'
--- will quit immediately.
+-- | A version of 'evalOpto', but allowing the sampling action and stopping
+-- condition to take advantage of an underlying 'Alternative' instance,
+-- where 'empty'/'mzero' will quit immediately.
 evalOptoAlt
-    :: forall m v a. MonadPlus m
+    :: MonadPlus m
     => RunOpts m a
     -> a
     -> OptoM m v a
@@ -102,10 +104,10 @@ runOptoAlt_ RO{..} x0 MkOptoM{..} f = do
       (flip MkOptoM oUpdate <$> pullRefs rSs)
 {-# INLINE runOptoAlt_ #-}
 
--- | Optimize an @a@ many times, until the stopping condition or limit is
--- reached.  Returns a frozen updated optimizer state.
+-- | Like 'evalOpto', but returns a closure from which one can "resume" the
+-- optimizer from where it leaves off with its state.
 runOpto
-    :: forall m v a. Monad m
+    :: Monad m
     => RunOpts m a
     -> a
     -> OptoM m v a
@@ -113,9 +115,9 @@ runOpto
 runOpto ro x0 o = runOpto_ ro x0 o (liftA2 (,))
 
 -- | Optimize an @a@ many times, until the stopping condition or limit is
--- reached.  Returns a frozen updated optimizer state.
+-- reached.
 evalOpto
-    :: forall m v a. Monad m
+    :: Monad m
     => RunOpts m a
     -> a
     -> OptoM m v a
@@ -192,9 +194,9 @@ instance (Num a, Num b) => Monoid (Sum2 a b) where
     mempty = Sum2 0 0
     {-# INLINE mempty #-}
 
--- | Optimize an @a@ times in parallel, and aggregate all the results
--- together by taking the mean.  Freezes and returns all of the updated
--- optimizer states from each thread.
+-- | Like 'evalOptoParallel', but returns closures (one for each thread)
+-- from which one can "resume" an optimizer from where it leaves off with
+-- its state in each thread.
 runOptoParallel
     :: (MonadUnliftIO m, Fractional a)
     => RunOpts m a
@@ -230,6 +232,8 @@ runOptoParallel ro PO{..} x0 o0 = do
       newX <- fromMaybe (mean xs) <$> readIORef hitStop
       return ((), ((newX, os'), i + m))
 
+-- | Optimize an @a@ times in parallel, and aggregate all the results
+-- together by taking the mean.
 evalOptoParallel
     :: (MonadUnliftIO m, Fractional a)
     => RunOpts m a

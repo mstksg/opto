@@ -1,7 +1,16 @@
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
-
+-- |
+-- Module      : Numeric.Opto.Run.Conduit
+-- Copyright   : (c) Justin Le 2019
+-- License     : BSD3
+--
+-- Maintainer  : justin@jle.im
+-- Stability   : experimental
+-- Portability : non-portable
+--
+-- Conduits that are useful for sampling and running optimizers.
 module Numeric.Opto.Run.Conduit (
   -- * Running 'Opto's
   -- ** Single threaded
@@ -44,7 +53,8 @@ import qualified System.Random.MWC.Distributions    as MWC
 -- optimizer, give a conduit that processes upstream samples and outputs
 -- every single one of the updated values as they are generated.
 --
--- Returns the updated optimizer state.
+-- Upon the end of execution, returns a closure from which one can "resume"
+-- the optimizer from where it leaves off with its state.
 runOptoConduit
     :: Monad m
     => RunOpts (SampleT r (ConduitT r a m)) a
@@ -58,7 +68,7 @@ runOptoConduit ro = runOptoConduitChunk ro'
                  roStopCond ro d x
              }
 
--- | 'runOptoConduit', without returning the updated optimizer state.
+-- | 'runOptoConduit', without returning the continuing closure.
 runOptoConduit_
     :: Monad m
     => RunOpts (SampleT r (ConduitT r a m)) a
@@ -71,7 +81,8 @@ runOptoConduit_ ro x0 = void . runOptoConduit ro x0
 -- optimizer, give a conduit that processes upstream samples and outputs
 -- the updated value only /after/ the optimizer finishes.
 --
--- Returns the updated optimizer state.
+-- Upon the end of execution, returns a closure from which one can "resume"
+-- the optimizer from where it leaves off with its state.
 runOptoConduitChunk
     :: Monad m
     => RunOpts (SampleT r (ConduitT r a m)) a
@@ -85,7 +96,8 @@ runOptoConduitChunk ro x0 o0 = do
     yield x
     return o
 
--- | 'runOptoConduitChunk', without returning the updated optimizer state.
+-- | 'runOptoConduitChunk', without returning and freezing the updated
+-- optimizer state.
 runOptoConduitChunk_
     :: Monad m
     => RunOpts (SampleT r (ConduitT r a m)) a

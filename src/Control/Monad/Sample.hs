@@ -42,7 +42,6 @@ import qualified System.Random.MWC.Distributions as MWC
 -- re-fill it first.
 class MonadPlus m => MonadSample r m | m -> r where
     sample  :: m r
-    -- | Should never fail
     sampleN :: VG.Vector v r => Int -> m (v r)
     sampleN = fmap VG.fromList . go
       where
