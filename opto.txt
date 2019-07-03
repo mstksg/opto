@@ -288,21 +288,21 @@ PO :: Maybe Int -> Int -> ParallelOpts
 
 -- | Optimize an <tt>a</tt> many times, until the stopping condition or
 --   limit is reached. Returns a frozen updated optimizer state.
-runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 -- | Optimize an <tt>a</tt> many times, until the stopping condition or
 --   limit is reached. Returns a frozen updated optimizer state.
-evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
+evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
 -- | A version of <a>runOpto</a>, but allowing the stopping condition to
 --   take advantage of an underlying <a>Alternative</a> instance, where
 --   'empty'/'mzero' will quit immediately.
-runOptoAlt :: forall m v a. MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+runOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 -- | A version of <a>evalOpto</a>, but allowing the stopping condition to
 --   take advantage of an underlying <a>Alternative</a> instance, where
 --   'empty'/'mzero' will quit immediately.
-evalOptoAlt :: forall m v a. MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
+evalOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
 
 -- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
 --   results together by taking the mean. Freezes and returns all of the
