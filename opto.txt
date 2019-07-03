@@ -281,34 +281,38 @@ noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
 PO :: Maybe Int -> Int -> ParallelOpts
+
+-- | Number of threads. Will default to max capacity
 [poThreads] :: ParallelOpts -> Maybe Int
 
--- | how much each thread will process before regrouping
+-- | How much each thread will process before regrouping
 [poSplitRuns] :: ParallelOpts -> Int
 
 -- | Optimize an <tt>a</tt> many times, until the stopping condition or
---   limit is reached. Returns a frozen updated optimizer state.
-runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
-
--- | Optimize an <tt>a</tt> many times, until the stopping condition or
---   limit is reached. Returns a frozen updated optimizer state.
+--   limit is reached.
 evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
--- | A version of <a>runOpto</a>, but allowing the stopping condition to
---   take advantage of an underlying <a>Alternative</a> instance, where
---   'empty'/'mzero' will quit immediately.
-runOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+-- | Like <a>evalOpto</a>, but returns a frozen updated optimizer state.
+runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 -- | A version of <a>evalOpto</a>, but allowing the stopping condition to
 --   take advantage of an underlying <a>Alternative</a> instance, where
 --   'empty'/'mzero' will quit immediately.
 evalOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
 
+-- | A version of <a>runOpto</a>, but allowing the stopping condition to
+--   take advantage of an underlying <a>Alternative</a> instance, where
+--   'empty'/'mzero' will quit immediately.
+runOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+
 -- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
 --   results together by taking the mean. Freezes and returns all of the
 --   updated optimizer states from each thread.
-runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
 evalOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m a
+
+-- | Like <a>evalOptoParallel</a>, but returns the frozen updated optimizer
+--   states from each thread.
+runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
 
@@ -347,9 +351,11 @@ runOptoConduitChunk_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
 PO :: Maybe Int -> Int -> ParallelOpts
+
+-- | Number of threads. Will default to max capacity
 [poThreads] :: ParallelOpts -> Maybe Int
 
--- | how much each thread will process before regrouping
+-- | How much each thread will process before regrouping
 [poSplitRuns] :: ParallelOpts -> Int
 
 -- | Outputs a shuffled version of the input stream. Keeps entire input
