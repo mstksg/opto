@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
@@ -40,7 +41,7 @@ import qualified Data.Vector.Mutable       as MV
 --
 -- This allows us to reat mutable vectors and in-place mutable numbers or
 -- records in the same way.
-class Monad m => Ref m a v | v -> a where
+class Ref m a v | v -> a where
     -- | Initialize a mutable reference with a given value
     thawRef      :: a -> m v
     -- | Read an immutable value back from a mutable reference
@@ -52,14 +53,17 @@ class Monad m => Ref m a v | v -> a where
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference.
     modifyRef  :: v -> (a -> a) -> m ()
+    default modifyRef :: Functor m => v -> (a -> a) -> m ()
     modifyRef v f = void $ updateRef v ((,()) . f)
     -- | 'modifyRef', but forces the result before storing it back in the
     -- reference.
     modifyRef' :: v -> (a -> a) -> m ()
+    default modifyRef' :: Functor m => v -> (a -> a) -> m ()
     modifyRef' v f = void $ updateRef' v ((,()) . f)
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference, returning a result value from that function.
     updateRef  :: v -> (a -> (a, b)) -> m b
+    default updateRef :: Monad m => v -> (a -> (a, b)) -> m b
     updateRef v f = do
         (x, y) <- f <$> freezeRef v
         copyRef v x
@@ -67,6 +71,7 @@ class Monad m => Ref m a v | v -> a where
     -- | 'updateRef', but forces the updated value before storing it back in the
     -- reference.
     updateRef' :: v -> (a -> (a, b)) -> m b
+    default updateRef' :: Monad m => v -> (a -> (a, b)) -> m b
     updateRef' v f = do
         (x, y) <- f <$> freezeRef v
         x `seq` copyRef v x

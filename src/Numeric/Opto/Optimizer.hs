@@ -100,28 +100,28 @@ adam
     => Adam c               -- ^ configuration
     -> Grad m a             -- ^ gradient
     -> OptoM m v a
-adam Adam{..} gr =
-    MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl addZero :<< ZPØ
-                     :: ZipProd (RefVal m)
-                                '[c                     ,a,a]
-                                '[MutVar (PrimState m) c,v,v]
-            , oUpdate = \rSs x -> fmap fromJust . runMaybeT $ do
-                RVr rT :<< RVr rM :<< RVr rV :<< ZPØ <- return rSs
-                lift $ do
-                  rM .*= adamDecay1
-                  rV .*= adamDecay2
-                  g <- gr x
-                  rM .*+= (1 - adamDecay1, g)
-                  rV .*+= (1 - adamDecay2, g * g)
-                Identity m :& Identity v :& RNil <- lift $ freezeRefs (tailZP rSs)
-                t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
-                                                   in  (t1, t1)
-                let mHat = recip (1 - adamDecay1 ** t) .* m
-                    vHat = recip (1 - adamDecay2 ** t) .* v
-                return ( -adamStep
-                       , mHat / (sqrt vHat + realToFrac adamEpsilon)
-                       )
-            }
+adam Adam{..} gr = MkOptoM
+    { oInit   = RVl 1 :<< RVl addZero :<< RVl addZero :<< ZPØ
+             :: ZipProd (RefVal m)
+                        '[c                     ,a,a]
+                        '[MutVar (PrimState m) c,v,v]
+    , oUpdate = \rSs x -> fmap fromJust . runMaybeT $ do
+        RVr rT :<< RVr rM :<< RVr rV :<< ZPØ <- return rSs
+        lift $ do
+          rM .*= adamDecay1
+          rV .*= adamDecay2
+          g <- gr x
+          rM .*+= (1 - adamDecay1, g)
+          rV .*+= (1 - adamDecay2, g * g)
+        Identity m :& Identity v :& RNil <- lift $ freezeRefs (tailZP rSs)
+        t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
+                                           in  (t1, t1)
+        let mHat = recip (1 - adamDecay1 ** t) .* m
+            vHat = recip (1 - adamDecay2 ** t) .* v
+        return ( -adamStep
+               , mHat / (sqrt vHat + realToFrac adamEpsilon)
+               )
+    }
 
 data AdaMax c = AdaMax
     { adaMaxStep    :: !c
@@ -149,25 +149,25 @@ adaMax
     => AdaMax c             -- ^ configuration
     -> Grad m a             -- ^ gradient
     -> OptoM m v a
-adaMax AdaMax{..} gr =
-    MkOptoM { oInit   = RVl 1 :<< RVl addZero :<< RVl 0 :<< ZPØ
-                     :: ZipProd (RefVal m)
-                                '[c,a,c]
-                                '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
-            , oUpdate = \rSs x -> fmap fromJust . runMaybeT $ do
-                RVr rT :<< RVr rM :<< RVr rU :<< ZPØ <- return rSs
-                lift $ do
-                  rM .*= adaMaxDecay1
-                  g <- gr x
-                  rM .*+= (1 - adaMaxDecay1, g)
-                  t <- updateRef' rT $ \t0 ->
-                      let t1 = t0 + 1
-                      in  (t1, t1)
-                  m <- freezeRef rM
-                  u <- updateRef' rU $ \u0 ->
-                      let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
-                      in  (u1, u1)
-                  return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
-                         , m
-                         )
-            }
+adaMax AdaMax{..} gr = MkOptoM
+    { oInit   = RVl 1 :<< RVl addZero :<< RVl 0 :<< ZPØ
+             :: ZipProd (RefVal m)
+                        '[c,a,c]
+                        '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
+    , oUpdate = \rSs x -> fmap fromJust . runMaybeT $ do
+        RVr rT :<< RVr rM :<< RVr rU :<< ZPØ <- return rSs
+        lift $ do
+          rM .*= adaMaxDecay1
+          g <- gr x
+          rM .*+= (1 - adaMaxDecay1, g)
+          t <- updateRef' rT $ \t0 ->
+              let t1 = t0 + 1
+              in  (t1, t1)
+          m <- freezeRef rM
+          u <- updateRef' rU $ \u0 ->
+              let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
+              in  (u1, u1)
+          return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
+                 , m
+                 )
+    }

@@ -81,7 +81,7 @@ runOptoConduitChunk
 runOptoConduitChunk ro x0 o0 = do
     (x, o) <- fmap (fromMaybe (x0, o0))
             . flip runSampleT saConduit
-            $ runOptoMany ro x0 o0
+            $ runOptoAlt ro x0 o0
     yield x
     return o
 
