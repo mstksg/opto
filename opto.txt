@@ -34,7 +34,7 @@ module Numeric.Opto.Ref
 --   
 --   This allows us to reat mutable vectors and in-place mutable numbers or
 --   records in the same way.
-class Monad m => Ref m a v | v -> a
+class Ref m a v | v -> a
 
 -- | Initialize a mutable reference with a given value
 thawRef :: Ref m a v => a -> m v
@@ -49,17 +49,33 @@ copyRef :: Ref m a v => v -> a -> m ()
 --   mutable reference.
 modifyRef :: Ref m a v => v -> (a -> a) -> m ()
 
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference.
+modifyRef :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
+
 -- | <a>modifyRef</a>, but forces the result before storing it back in the
 --   reference.
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+
+-- | <a>modifyRef</a>, but forces the result before storing it back in the
+--   reference.
+modifyRef' :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
 
 -- | Apply a pure function on an immutable value onto a value stored in a
 --   mutable reference, returning a result value from that function.
 updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
 
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference, returning a result value from that function.
+updateRef :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
+
 -- | <a>updateRef</a>, but forces the updated value before storing it back
 --   in the reference.
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
+
+-- | <a>updateRef</a>, but forces the updated value before storing it back
+--   in the reference.
+updateRef' :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
 
 -- | <tt><a>RefVal</a> m a v</tt> is a wrapper over a pure value <tt>a</tt>
 --   that can be stored in a mutable reference <tt>v</tt>.
@@ -189,7 +205,7 @@ gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 class (Ref m a v, Additive a) => AdditiveInPlace m v a
 (.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
 infix 4 .+.=
-sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
+sumAdditiveInPlace :: (Monad m, AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*=) :: ScalingInPlace m v c a => v -> c -> m ()
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
@@ -263,20 +279,22 @@ RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 
 -- | Optimize an <tt>a</tt> many times, until the stopping condition or
---   limit is reached. Return the updated optimizer state.
-runOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
-
--- | Optimize an <tt>a</tt> many times, until the stopping condition or
---   limit is reached. Forget the updated optimizer state.
-evalOptoMany :: forall m v a. Alternative m => RunOpts m a -> a -> OptoM m v a -> m a
-
--- | Perform a single optimizer step, returning the updated optimizer
---   state.
+--   limit is reached. Returns a frozen updated optimizer state.
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
--- | Perform a single optimizer step, forgetting the updated optimizer
---   state.
+-- | Optimize an <tt>a</tt> many times, until the stopping condition or
+--   limit is reached. Returns a frozen updated optimizer state.
 evalOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m a
+
+-- | A version of <a>runOpto</a>, but allowing the stopping condition to
+--   take advantage of an underlying <a>Alternative</a> instance, where
+--   'empty'/'mzero' will quit immediately.
+runOptoAlt :: forall m v a. MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+
+-- | A version of <a>evalOpto</a>, but allowing the stopping condition to
+--   take advantage of an underlying <a>Alternative</a> instance, where
+--   'empty'/'mzero' will quit immediately.
+evalOptoAlt :: forall m v a. MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
 
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
@@ -286,14 +304,11 @@ PO :: Maybe Int -> Int -> ParallelOpts
 -- | how much each thread will process before regrouping
 [poSplitRuns] :: ParallelOpts -> Int
 
--- | Optimize an <tt>a</tt> many times in parallel, and aggregate all the
---   results together by taking the mean. Returns all of the updated
---   optimizer states from each thread.
-runOptoManyParallel :: (MonadUnliftIO m, MonadPlus m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
-
--- | Preform a single optimization batch in parallel, returning all of the
+-- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
+--   results together by taking the mean. Freezes and returns all of the
 --   updated optimizer states from each thread.
 runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
+evalOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m a
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
 
@@ -426,7 +441,7 @@ module Numeric.Opto
 --   
 --   This allows us to reat mutable vectors and in-place mutable numbers or
 --   records in the same way.
-class Monad m => Ref m a v | v -> a
+class Ref m a v | v -> a
 
 -- | Initialize a mutable reference with a given value
 thawRef :: Ref m a v => a -> m v
@@ -441,14 +456,30 @@ copyRef :: Ref m a v => v -> a -> m ()
 --   mutable reference.
 modifyRef :: Ref m a v => v -> (a -> a) -> m ()
 
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference.
+modifyRef :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
+
 -- | <a>modifyRef</a>, but forces the result before storing it back in the
 --   reference.
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+
+-- | <a>modifyRef</a>, but forces the result before storing it back in the
+--   reference.
+modifyRef' :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
 
 -- | Apply a pure function on an immutable value onto a value stored in a
 --   mutable reference, returning a result value from that function.
 updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
 
+-- | Apply a pure function on an immutable value onto a value stored in a
+--   mutable reference, returning a result value from that function.
+updateRef :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
+
 -- | <a>updateRef</a>, but forces the updated value before storing it back
 --   in the reference.
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
+
+-- | <a>updateRef</a>, but forces the updated value before storing it back
+--   in the reference.
+updateRef' :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
