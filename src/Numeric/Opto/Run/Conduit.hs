@@ -12,17 +12,18 @@
 --
 -- Conduits that are useful for sampling and running optimizers.
 module Numeric.Opto.Run.Conduit (
-  -- * Running 'Opto's
-  -- ** Single threaded
-    RunOpts(..)
-  , runOptoConduit
-  , runOptoConduit_
-  , runOptoConduitChunk
-  , runOptoConduitChunk_
-  -- ** Parallel
-  , ParallelOpts(..)
+  -- -- * Running 'Opto's
+  -- -- ** Single threaded
+  --   RunOpts(..)
+  -- , runOptoConduit
+  -- , runOptoConduit_
+  -- , runOptoConduitChunk
+  -- , runOptoConduitChunk_
+  -- -- ** Parallel
+  -- , ParallelOpts(..)
+
   -- * Sampling conduits
-  , shuffling
+    shuffling
   , shufflingN
   , sinkSampleReservoir
   , samplingN
@@ -39,72 +40,76 @@ import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.Sample
 import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Maybe
+import           Data.Bifunctor
 import           Data.Conduit
+import           Data.Foldable
 import           Data.Maybe
 import           Numeric.Opto.Core
 import           Numeric.Opto.Run
 import qualified Data.Conduit.Combinators           as C
 import qualified Data.Vector                        as V
 import qualified Data.Vector.Generic                as VG
+import qualified Data.Vector.Generic.Mutable        as VG
 import qualified System.Random.MWC                  as MWC
 import qualified System.Random.MWC.Distributions    as MWC
 
--- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
--- optimizer, give a conduit that processes upstream samples and outputs
--- every single one of the updated values as they are generated.
---
--- Upon the end of execution, returns a closure from which one can "resume"
--- the optimizer from where it leaves off with its state.
-runOptoConduit
-    :: Monad m
-    => RunOpts (SampleT r (ConduitT r a m)) a
-    -> a
-    -> OptoM (SampleT r (ConduitT r a m)) v a
-    -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
-runOptoConduit ro = runOptoConduitChunk ro'
-  where
-    ro' = ro { roStopCond = \d x -> do
-                 lift $ yield x
-                 roStopCond ro d x
-             }
+---- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
+---- optimizer, give a conduit that processes upstream samples and outputs
+---- every single one of the updated values as they are generated.
+----
+---- Upon the end of execution, returns a closure from which one can "resume"
+---- the optimizer from where it leaves off with its state.
+--runOptoConduit
+--    :: Monad m
+--    => RunOpts (SampleT r (ConduitT r a m)) a
+--    -> a
+--    -> OptoM (SampleT r (ConduitT r a m)) v a
+--    -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
+--runOptoConduit ro = runOptoConduitChunk ro'
+--  where
+--    ro' = ro { roStopCond = \d x -> do
+--                 lift $ yield x
+--                 roStopCond ro d x
+--             }
 
--- | 'runOptoConduit', without returning the continuing closure.
-runOptoConduit_
-    :: Monad m
-    => RunOpts (SampleT r (ConduitT r a m)) a
-    -> a
-    -> OptoM (SampleT r (ConduitT r a m)) v a
-    -> ConduitT r a m ()
-runOptoConduit_ ro x0 = void . runOptoConduit ro x0
+-- -- | 'runOptoConduit', without returning the continuing closure.
+-- runOptoConduit_
+--     :: Monad m
+--     => RunOpts (SampleT r (ConduitT r a m)) a
+--     -> a
+--     -> OptoM (SampleT r (ConduitT r a m)) v a
+--     -> ConduitT r a m ()
+-- runOptoConduit_ ro x0 = void . runOptoConduit ro x0
 
--- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
--- optimizer, give a conduit that processes upstream samples and outputs
--- the updated value only /after/ the optimizer finishes.
---
--- Upon the end of execution, returns a closure from which one can "resume"
--- the optimizer from where it leaves off with its state.
-runOptoConduitChunk
-    :: Monad m
-    => RunOpts (SampleT r (ConduitT r a m)) a
-    -> a
-    -> OptoM (SampleT r (ConduitT r a m)) v a
-    -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
-runOptoConduitChunk ro x0 o0 = do
-    (x, o) <- fmap (fromMaybe (x0, o0))
-            . flip runSampleT saConduit
-            $ runOptoAlt ro x0 o0
-    yield x
-    return o
+---- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
+---- optimizer, give a conduit that processes upstream samples and outputs
+---- the updated value only /after/ the optimizer finishes.
+----
+---- Upon the end of execution, returns a closure from which one can "resume"
+---- the optimizer from where it leaves off with its state.
+--runOptoConduitChunk
+--    :: Monad m
+--    => RunOpts (SampleT r (ConduitT r a m)) a
+--    -> a
+--    -> OptoM (SampleT r (ConduitT r a m)) v a
+--    -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
+--runOptoConduitChunk ro x0 o0 = do
+--    (x, o) <- fmap (fromMaybe (x0, o0))
+--            . flip runSampleT saConduit
+--            $ runOptoAlt ro x0 o0
+--    yield x
+--    return o
 
--- | 'runOptoConduitChunk', without returning and freezing the updated
--- optimizer state.
-runOptoConduitChunk_
-    :: Monad m
-    => RunOpts (SampleT r (ConduitT r a m)) a
-    -> a
-    -> OptoM (SampleT r (ConduitT r a m)) v a
-    -> ConduitT r a m ()
-runOptoConduitChunk_ ro x0 = void . runOptoConduitChunk ro x0
+-- -- | 'runOptoConduitChunk', without returning and freezing the updated
+-- -- optimizer state.
+-- runOptoConduitChunk_
+--     :: Monad m
+--     => RunOpts (SampleT r (ConduitT r a m)) a
+--     -> a
+--     -> OptoM (SampleT r (ConduitT r a m)) v a
+--     -> ConduitT r a m ()
+-- runOptoConduitChunk_ ro x0 = void . runOptoConduitChunk ro x0
 
 ---- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
 ---- optimizer, give a conduit that processes upstream samples and outputs
@@ -169,9 +174,15 @@ sinkSampleReservoir
     => Int
     -> MWC.Gen (PrimState m)
     -> ConduitT a o m (v a)
-sinkSampleReservoir n = fmap (fromMaybe VG.empty)
-                      . flip runSampleT saConduit
-                      . sampleReservoir n
+sinkSampleReservoir k g = do
+    xs <- VG.thaw . VG.fromList . catMaybes =<< replicateM k await
+    void . runMaybeT . for_ [k+1 ..] $ \i -> do
+      x <- MaybeT await
+      lift . lift $ do
+        j <- MWC.uniformR (1, i) g
+        when (j <= k) $
+          VG.unsafeWrite xs (j - 1) x
+    lift $ VG.freeze xs
 
 -- | Process an entire stream, and yield N random items from that stream.
 -- Is O(N) memory.

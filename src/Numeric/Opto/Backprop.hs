@@ -17,7 +17,8 @@ module Numeric.Opto.Backprop (
   , bpGradSample
   ) where
 
-import           Control.Monad.Sample
+import           Control.Monad
+import           Data.Conduit
 import           Numeric.Backprop
 import           Numeric.Opto.Core
 
@@ -30,7 +31,7 @@ bpGrad f = pureGrad $ gradBP f
 
 -- | Turn a @a -> b@ function parameterized on @r@ into a @'Grad' m a@.
 bpGradSample
-    :: (MonadSample r m, Backprop a, Backprop b)
+    :: (Backprop a, Backprop b, Monad m)
     => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b)
-    -> Grad m a
+    -> Grad (ConduitSample r o m) a
 bpGradSample f = pureSampling $ \r -> gradBP (f (constVar r))

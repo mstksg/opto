@@ -131,14 +131,13 @@ main = MWC.withSystemRandom $ \g -> do
                           >> C.yieldMany train .| shuffling g
                       )
        .| C.iterM (modify . (:))      -- add to state stack for train eval
-       .| runOptoConduit_ o net0 (adam @_ @(MutVar _ Net) def (pureSampling gr))
+       .| optoConduit_ def net0 (adam @_ @(MutVar _ Net) def (pureSampling gr))
        .| mapM_ (report 2500) [0..]
        .| C.map T.pack
        .| C.encodeUtf8
        .| C.stdout
   where
     gr (x, y) = gradBP (netErr (constVar x) (constVar y))
-    o = noStop Nothing Nothing
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)

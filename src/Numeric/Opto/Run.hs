@@ -18,22 +18,26 @@
 -- Functions to /run/ optimiziers.
 module Numeric.Opto.Run (
   -- * Options
-    RunOpts(..), noStop
+    RunOpts(..)
   , ParallelOpts(..)
-  -- * Single-threaded
-  , evalOpto, runOpto
-  , evalOptoAlt, runOptoAlt
-  -- * Parallel
-  , evalOptoParallel
-  , runOptoParallel
+  -- * Conduit
+  , optoConduit
+  , optoConduit_
+  -- , evalOpto, runOpto
+  -- , evalOptoAlt, runOptoAlt
+  -- -- * Parallel
+  -- , evalOptoParallel
+  -- , runOptoParallel
   ) where
 
 import           Control.Applicative
+import           Data.Default
 import           Control.Monad
 import           Control.Monad.IO.Unlift
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State.Strict
+import           Data.Conduit
 import           Data.Functor
 import           Data.Maybe
 import           Numeric.Opto.Core
@@ -42,12 +46,14 @@ import           Numeric.Opto.Update
 import           UnliftIO.Async
 import           UnliftIO.Concurrent
 import           UnliftIO.IORef
+import qualified Data.Conduit                     as C
 
 -- | Options for running an optimizer.
 data RunOpts m a = RO
     { roStopCond :: Diff a -> a -> m Bool
-    , roLimit    :: Maybe Int
-    , roBatch    :: Maybe Int
+    , roLimit    :: Maybe Int -- ^ number of batches to run (default = Nothing = until failure)
+    , roBatch    :: Maybe Int -- ^ batching updates (default = Nothing = no batching)
+    , roReport   :: Maybe Int -- ^ batches per report (default = Nothing = every batch)
     }
 
 -- | Options for running an optimizer in a concurrent setting.
@@ -56,98 +62,40 @@ data ParallelOpts = PO
     , poSplitRuns :: Int         -- ^ How much each thread will process before regrouping
     }
 
+instance Applicative m => Default (RunOpts m a) where
+    def = RO (\_ _ -> pure False) Nothing Nothing Nothing
 
--- | Construct a 'RunOpts' without a stopping condition.
-noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
-noStop = RO (\_ _ -> pure False)
-
--- | A version of 'runOpto', but allowing the sampling action and stopping
--- condition to take advantage of an underlying 'Alternative' instance,
--- where 'empty'/'mzero' will quit immediately.
-runOptoAlt
-    :: MonadPlus m
-    => RunOpts m a
+optoConduit
+    :: forall m v a i. Monad m
+    => RunOpts (ConduitSample i a m) a
     -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
-runOptoAlt ro x o = runOptoAlt_ ro x o (liftA2 (,))
-
--- | A version of 'evalOpto', but allowing the sampling action and stopping
--- condition to take advantage of an underlying 'Alternative' instance,
--- where 'empty'/'mzero' will quit immediately.
-evalOptoAlt
-    :: MonadPlus m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> m a
-evalOptoAlt ro x o = runOptoAlt_ ro x o const
-
-runOptoAlt_
-    :: forall m v a r. MonadPlus m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> (m a -> m (OptoM m v a) -> m r)
-    -> m r
-runOptoAlt_ RO{..} x0 MkOptoM{..} f = do
+    -> OptoM (ConduitSample i a m) v a
+    -> ConduitT i a m (OptoM (ConduitSample i a m) v a)
+optoConduit RO{..} x0 o0@MkOptoM{..} = fmap (fromMaybe o0) . runConduitSample $ do
     rSs <- thawRefs oInit
-    rX  <- thawRef @m @a @v x0
-    optoLoop roLimit roBatch
-        (thawRef @m @a @v)
+    rX  <- thawRef @_ @a @v x0
+    optoLoop roLimit roBatch roReport
+        (thawRef @_ @a @v)
         (.*+=)
         freezeRef
         rX
         (oUpdate rSs)
         roStopCond
-    f (freezeRef rX)
-      (flip MkOptoM oUpdate <$> pullRefs rSs)
-{-# INLINE runOptoAlt_ #-}
+        (conduitSample . C.yield)
+    flip MkOptoM oUpdate <$> pullRefs rSs
 
--- | Like 'evalOpto', but returns a closure from which one can "resume" the
--- optimizer from where it leaves off with its state.
-runOpto
-    :: Monad m
-    => RunOpts m a
+optoConduit_
+    :: forall m v a i. Monad m
+    => RunOpts (ConduitSample i a m) a
     -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
-runOpto ro x0 o = runOpto_ ro x0 o (liftA2 (,))
-
--- | Optimize an @a@ many times, until the stopping condition or limit is
--- reached.
-evalOpto
-    :: Monad m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> m a
-evalOpto ro x0 o = runOpto_ ro x0 o const
-
-runOpto_
-    :: forall m v a r. Monad m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> (m a -> m (OptoM m v a) -> m r)
-    -> m r
-runOpto_ RO{..} x0 MkOptoM{..} f = do
-    rSs <- thawRefs oInit
-    rX  <- thawRef @m @a @v x0
-    _ <- runMaybeT $ optoLoop roLimit roBatch
-            (lift . thawRef @m @a @v)
-            (\v -> lift . (v .*+=))
-            (lift . freezeRef)
-            rX
-            (lift . oUpdate rSs)
-            (\d -> lift . roStopCond d)
-    f (freezeRef rX)
-      (flip MkOptoM oUpdate <$> pullRefs rSs)
-{-# INLINE runOpto_ #-}
+    -> OptoM (ConduitSample i a m) v a
+    -> ConduitT i a m ()
+optoConduit_ ro x0 = void . optoConduit ro x0
 
 optoLoop
-    :: forall m v a c. (Alternative m, Monad m, Scaling c a)
+    :: forall m v a c. (MonadPlus m, Scaling c a)
     => Maybe Int
+    -> Maybe Int
     -> Maybe Int
     -> (a -> m v)
     -> (v -> (c, a) -> m ())
@@ -155,13 +103,26 @@ optoLoop
     -> v
     -> (a -> m (c, a))
     -> (Diff a -> a -> m Bool)
+    -> (a -> m ())
     -> m ()
-optoLoop lim batch initXVar updateXVar readXVar xVar updateState stop = repeatLim $ do
-    x <- readXVar xVar
-    (c, g) <- repeatBatch x
-    updateXVar xVar (c, g)
-    guard . not =<< stop (c .* g) x
+optoLoop lim batch report initXVar updateXVar readXVar xVar updateState stop act =
+            flip evalStateT (1 :: Int) . repeatLim $ do
+    (x, c, g) <- lift $ do
+      x      <- readXVar xVar
+      (c, g) <- repeatBatch x
+      updateXVar xVar (c, g)
+      pure (x, c, g)
+    reporter
+    lift $ guard . not =<< stop (c .* g) x
   where
+    reporter = case report of
+      Nothing -> lift $ act =<< readXVar xVar
+      Just r  -> get >>= \i -> do
+        if i <= r
+          then put (i + 1)
+          else do
+            lift $ act =<< readXVar xVar
+            put 1
     repeatLim = case lim of
       Nothing -> void . many
       Just l  -> replicateM_ l
@@ -175,70 +136,70 @@ optoLoop lim batch initXVar updateXVar readXVar xVar updateState stop = repeatLi
         (scaleOne @c @a,) <$> readXVar v
 {-# INLINE optoLoop #-}
 
-mean :: (Foldable t, Fractional a) => t a -> a
-mean = go . foldMap (`Sum2` 1)
-  where
-    go (Sum2 x n) = x / fromInteger n
-    {-# INLINE go #-}
-{-# INLINE mean #-}
+-- mean :: (Foldable t, Fractional a) => t a -> a
+-- mean = go . foldMap (`Sum2` 1)
+--   where
+--     go (Sum2 x n) = x / fromInteger n
+--     {-# INLINE go #-}
+-- {-# INLINE mean #-}
 
-data Sum2 a b = Sum2 !a !b
+-- data Sum2 a b = Sum2 !a !b
 
-instance (Num a, Num b) => Semigroup (Sum2 a b) where
-    Sum2 x1 y1 <> Sum2 x2 y2 = Sum2 (x1 + x2) (y1 + y2)
-    {-# INLINE (<>) #-}
+-- instance (Num a, Num b) => Semigroup (Sum2 a b) where
+--     Sum2 x1 y1 <> Sum2 x2 y2 = Sum2 (x1 + x2) (y1 + y2)
+--     {-# INLINE (<>) #-}
 
-instance (Num a, Num b) => Monoid (Sum2 a b) where
-    mappend = (<>)
-    {-# INLINE mappend #-}
-    mempty = Sum2 0 0
-    {-# INLINE mempty #-}
+-- instance (Num a, Num b) => Monoid (Sum2 a b) where
+--     mappend = (<>)
+--     {-# INLINE mappend #-}
+--     mempty = Sum2 0 0
+--     {-# INLINE mempty #-}
 
--- | Like 'evalOptoParallel', but returns closures (one for each thread)
--- from which one can "resume" an optimizer from where it leaves off with
--- its state in each thread.
-runOptoParallel
-    :: (MonadUnliftIO m, Fractional a)
-    => RunOpts m a
-    -> ParallelOpts
-    -> a
-    -> OptoM m v a
-    -> m (a, [OptoM m v a])
-runOptoParallel ro PO{..} x0 o0 = do
-    n <- maybe getNumCapabilities pure poThreads
-    hitStop <- newIORef Nothing
-    let os0 = replicate n o0
-    fmap (maybe (x0, os0) fst)
-        . runMaybeT
-        . flip execStateT ((x0, os0), 0)
-        . many
-        . StateT $ \((x,os), i) -> do
-      maybe (pure ()) (const empty) =<< readIORef hitStop
-      m <- case roLimit ro of
-        Nothing -> pure poSplitRuns
-        Just l  -> do
-          guard (i < l) $>
-            if i + poSplitRuns <= l
-              then poSplitRuns
-              else l - i
-      (xs, os') <- lift . fmap unzip . forConcurrently os $ \o ->
-        runOpto (ro { roLimit    = Just m
-                    , roStopCond = \d y -> do
-                        s <- roStopCond ro d y
-                        when s $ writeIORef hitStop $ Just y
-                        return s
-                    }
-                ) x o
-      newX <- fromMaybe (mean xs) <$> readIORef hitStop
-      return ((), ((newX, os'), i + m))
+-- -- | Like 'evalOptoParallel', but returns closures (one for each thread)
+-- -- from which one can "resume" an optimizer from where it leaves off with
+-- -- its state in each thread.
+-- runOptoParallel
+--     :: (MonadUnliftIO m, Fractional a)
+--     => RunOpts m a
+--     -> ParallelOpts
+--     -> a
+--     -> OptoM m v a
+--     -> m (a, [OptoM m v a])
+-- runOptoParallel ro PO{..} x0 o0 = do
+--     n <- maybe getNumCapabilities pure poThreads
+--     hitStop <- newIORef Nothing
+--     let os0 = replicate n o0
+--     fmap (maybe (x0, os0) fst)
+--         . runMaybeT
+--         . flip execStateT ((x0, os0), 0)
+--         . many
+--         . StateT $ \((x,os), i) -> do
+--       maybe (pure ()) (const empty) =<< readIORef hitStop
+--       m <- case roLimit ro of
+--         Nothing -> pure poSplitRuns
+--         Just l  -> do
+--           guard (i < l) $>
+--             if i + poSplitRuns <= l
+--               then poSplitRuns
+--               else l - i
+--       (xs, os') <- lift . fmap unzip . forConcurrently os $ \o ->
+--         runOpto (ro { roLimit    = Just m
+--                     , roStopCond = \d y -> do
+--                         s <- roStopCond ro d y
+--                         when s $ writeIORef hitStop $ Just y
+--                         return s
+--                     }
+--                 ) x o
+--       newX <- fromMaybe (mean xs) <$> readIORef hitStop
+--       return ((), ((newX, os'), i + m))
 
--- | Optimize an @a@ times in parallel, and aggregate all the results
--- together by taking the mean.
-evalOptoParallel
-    :: (MonadUnliftIO m, Fractional a)
-    => RunOpts m a
-    -> ParallelOpts
-    -> a
-    -> OptoM m v a
-    -> m a
-evalOptoParallel ro po x = fmap fst . runOptoParallel ro po x
+-- -- | Optimize an @a@ times in parallel, and aggregate all the results
+-- -- together by taking the mean.
+-- evalOptoParallel
+--     :: (MonadUnliftIO m, Fractional a)
+--     => RunOpts m a
+--     -> ParallelOpts
+--     -> a
+--     -> OptoM m v a
+--     -> m a
+-- evalOptoParallel ro po x = fmap fst . runOptoParallel ro po x
