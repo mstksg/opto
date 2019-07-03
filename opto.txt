@@ -278,6 +278,14 @@ RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 -- | Construct a <a>RunOpts</a> without a stopping condition.
 noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
 
+-- | Options for running an optimizer in a concurrent setting.
+data ParallelOpts
+PO :: Maybe Int -> Int -> ParallelOpts
+[poThreads] :: ParallelOpts -> Maybe Int
+
+-- | how much each thread will process before regrouping
+[poSplitRuns] :: ParallelOpts -> Int
+
 -- | Optimize an <tt>a</tt> many times, until the stopping condition or
 --   limit is reached. Returns a frozen updated optimizer state.
 runOpto :: forall m v a. Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
@@ -295,14 +303,6 @@ runOptoAlt :: forall m v a. MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m 
 --   take advantage of an underlying <a>Alternative</a> instance, where
 --   'empty'/'mzero' will quit immediately.
 evalOptoAlt :: forall m v a. MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
-
--- | Options for running an optimizer in a concurrent setting.
-data ParallelOpts
-PO :: Maybe Int -> Int -> ParallelOpts
-[poThreads] :: ParallelOpts -> Maybe Int
-
--- | how much each thread will process before regrouping
-[poSplitRuns] :: ParallelOpts -> Int
 
 -- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
 --   results together by taking the mean. Freezes and returns all of the
