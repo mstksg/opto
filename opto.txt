@@ -292,7 +292,8 @@ PO :: Maybe Int -> Int -> ParallelOpts
 --   limit is reached.
 evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 
--- | Like <a>evalOpto</a>, but returns a frozen updated optimizer state.
+-- | Like <a>evalOpto</a>, but returns a closure from which one can
+--   "resume" the optimizer from where it leaves off with its state.
 runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 -- | A version of <a>evalOpto</a>, but allowing the stopping condition to
@@ -306,16 +307,18 @@ evalOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
 runOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 -- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
---   results together by taking the mean. Freezes and returns all of the
---   updated optimizer states from each thread.
+--   results together by taking the mean.
 evalOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m a
 
--- | Like <a>evalOptoParallel</a>, but returns the frozen updated optimizer
---   states from each thread.
+-- | Like <a>evalOptoParallel</a>, but returns closures (one for each
+--   thread) from which one can "resume" an optimizer from where it leaves
+--   off with its state in each thread.
 runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
 
+
+-- | Conduits that are useful for sampling and running optimizers.
 module Numeric.Opto.Run.Conduit
 
 -- | Options for running an optimizer.
@@ -330,10 +333,11 @@ RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
 --   samples and outputs every single one of the updated values as they are
 --   generated.
 --   
---   Returns the updated optimizer state.
+--   Upon the end of execution, returns a closure from which one can
+--   "resume" the optimizer from where it leaves off with its state.
 runOptoConduit :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
 
--- | <a>runOptoConduit</a>, without returning the updated optimizer state.
+-- | <a>runOptoConduit</a>, without returning the continuing closure.
 runOptoConduit_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
 
 -- | With <a>RunOpts</a>, a chunk size, an initial input, and a
@@ -341,11 +345,12 @@ runOptoConduit_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> Opt
 --   samples and outputs the updated value only <i>after</i> the optimizer
 --   finishes.
 --   
---   Returns the updated optimizer state.
+--   Upon the end of execution, returns a closure from which one can
+--   "resume" the optimizer from where it leaves off with its state.
 runOptoConduitChunk :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
 
--- | <a>runOptoConduitChunk</a>, without returning the updated optimizer
---   state.
+-- | <a>runOptoConduitChunk</a>, without returning and freezing the updated
+--   optimizer state.
 runOptoConduitChunk_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
 
 -- | Options for running an optimizer in a concurrent setting.
