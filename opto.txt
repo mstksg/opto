@@ -111,8 +111,6 @@ module Control.Monad.Sample
 --   you re-fill it first.
 class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
-
--- | Should never fail
 sampleN :: (MonadSample r m, Vector v r) => Int -> m (v r)
 flushSamples :: MonadSample r m => m [r]
 
@@ -296,14 +294,16 @@ evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
 --   "resume" the optimizer from where it leaves off with its state.
 runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
--- | A version of <a>evalOpto</a>, but allowing the stopping condition to
---   take advantage of an underlying <a>Alternative</a> instance, where
---   'empty'/'mzero' will quit immediately.
+-- | A version of <a>evalOpto</a>, but allowing the sampling action and
+--   stopping condition to take advantage of an underlying
+--   <a>Alternative</a> instance, where 'empty'/'mzero' will quit
+--   immediately.
 evalOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
 
--- | A version of <a>runOpto</a>, but allowing the stopping condition to
---   take advantage of an underlying <a>Alternative</a> instance, where
---   'empty'/'mzero' will quit immediately.
+-- | A version of <a>runOpto</a>, but allowing the sampling action and
+--   stopping condition to take advantage of an underlying
+--   <a>Alternative</a> instance, where 'empty'/'mzero' will quit
+--   immediately.
 runOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 
 -- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
