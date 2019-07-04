@@ -38,9 +38,7 @@ import           Data.Conduit
 import           Data.Foldable
 import           Data.Functor.Identity
 import           Data.MonoTraversable
-import           Data.Tuple
 import           Numeric.Opto.Ref
-import qualified Data.Sequence                   as Seq
 import qualified Data.Sequences                  as O
 import qualified Data.Vector.Generic             as VG
 import qualified Data.Vector.Generic.Mutable     as VG

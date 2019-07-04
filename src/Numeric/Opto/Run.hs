@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
 
 -- |
 -- Module      : Numeric.Opto.Run
@@ -20,9 +21,16 @@ module Numeric.Opto.Run (
   -- * Options
     RunOpts(..)
   , ParallelOpts(..)
-  -- * Conduit
-  , optoConduit
-  , optoConduit_
+  -- * Sampling
+  , runOptoSample
+  , evalOptoSample
+  -- ** Specific Sampling Monads
+  , optoConduit, optoConduit_
+  , refOpto, refOpto_
+  , foldOpto, foldOpto_
+  -- * Non-Sampling
+  , runOpto
+  , evalOpto
   -- , evalOpto, runOpto
   -- , evalOptoAlt, runOptoAlt
   -- -- * Parallel
@@ -30,24 +38,27 @@ module Numeric.Opto.Run (
   -- , runOptoParallel
   ) where
 
+-- import           Control.Monad.IO.Unlift
+-- import           Data.Functor
+-- import           UnliftIO.Async
+-- import           UnliftIO.Concurrent
+-- import           UnliftIO.IORef
 import           Control.Applicative
 import           Control.Monad
-import           Control.Monad.IO.Unlift
 import           Control.Monad.Sample
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State.Strict
+import           Data.Bifunctor
 import           Data.Conduit
 import           Data.Default
-import           Data.Functor
 import           Data.Maybe
+import           Data.MonoTraversable
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
-import           UnliftIO.Async
-import           UnliftIO.Concurrent
-import           UnliftIO.IORef
 import qualified Data.Conduit                     as C
+import qualified Data.Sequences                   as O
 
 -- | Options for running an optimizer.
 data RunOpts m a = RO
@@ -73,13 +84,32 @@ instance Applicative m => Default (RunOpts m a) where
       , roFreq     = Nothing
       }
 
-optoConduit
-    :: forall m v a i. Monad m
-    => RunOpts (ConduitSample i a m) a
+runOptoSample
+    :: MonadSample r m
+    => RunOpts m a
     -> a
-    -> OptoM (ConduitSample i a m) v a
-    -> ConduitT i a m (OptoM (ConduitSample i a m) v a)
-optoConduit RO{..} x0 o0@MkOptoM{..} = fmap (fromMaybe o0) . runConduitSample $ do
+    -> OptoM m v a
+    -> m (a, OptoM m v a)
+runOptoSample ro x o = runOptoSample_ ro x o (liftA2 (,))
+{-# INLINE runOptoSample #-}
+
+evalOptoSample
+    :: MonadSample r m
+    => RunOpts m a
+    -> a
+    -> OptoM m v a
+    -> m a
+evalOptoSample ro x o = runOptoSample_ ro x o const
+{-# INLINE evalOptoSample #-}
+
+runOptoSample_
+    :: forall m v a r q. MonadSample r m
+    => RunOpts m a
+    -> a
+    -> OptoM m v a
+    -> (m a -> m (OptoM m v a) -> m q)
+    -> m q
+runOptoSample_ RO{..} x0 MkOptoM{..} f = do
     rSs <- thawRefs oInit
     rX  <- thawRef @_ @a @v x0
     optoLoop roLimit roBatch roFreq
@@ -89,21 +119,12 @@ optoConduit RO{..} x0 o0@MkOptoM{..} = fmap (fromMaybe o0) . runConduitSample $ 
         rX
         (oUpdate rSs)
         roStopCond
-        (\x -> conduitSample (C.yield x) *> roReport x)
-    flip MkOptoM oUpdate <$> pullRefs rSs
-{-# INLINE optoConduit #-}
-
-optoConduit_
-    :: forall m v a i. Monad m
-    => RunOpts (ConduitSample i a m) a
-    -> a
-    -> OptoM (ConduitSample i a m) v a
-    -> ConduitT i a m ()
-optoConduit_ ro x0 = void . optoConduit ro x0
-{-# INLINE optoConduit_ #-}
+        roReport
+    f (freezeRef rX) (flip MkOptoM oUpdate <$> pullRefs rSs)
+{-# INLINE runOptoSample_ #-}
 
 runOpto
-    :: forall m v a. Monad m
+    :: Monad m
     => RunOpts m a
     -> a
     -> OptoM m v a
@@ -112,7 +133,7 @@ runOpto ro x0 o = runOpto_ ro x0 o (liftA2 (,))
 {-# INLINE runOpto #-}
 
 evalOpto
-    :: forall m v a. Monad m
+    :: Monad m
     => RunOpts m a
     -> a
     -> OptoM m v a
@@ -187,8 +208,78 @@ optoLoop lim batch report initXVar updateXVar readXVar xVar updateState stop act
         (scaleOne @c @a,) <$> readXVar v
 {-# INLINE optoLoop #-}
 
+optoConduit
+    :: Monad m
+    => RunOpts (ConduitSample i a m) a
+    -> a
+    -> OptoM (ConduitSample i a m) v a
+    -> ConduitT i a m (OptoM (ConduitSample i a m) v a)
+optoConduit ro x0 o = fmap (fromMaybe o) . runConduitSample $
+    runOptoSample_ ro' x0 o (const id)
+  where
+    ro' = ro { roReport = \x -> conduitSample (C.yield x) *> roReport ro x
+             }
+{-# INLINE optoConduit #-}
 
--- -- optoConduit RO{..} x0 o0@MkOptoM{..} = fmap (fromMaybe o0) . runConduitSample $ do
+optoConduit_
+    :: Monad m
+    => RunOpts (ConduitSample i a m) a
+    -> a
+    -> OptoM (ConduitSample i a m) v a
+    -> ConduitT i a m ()
+optoConduit_ ro x0 = void . optoConduit ro x0
+{-# INLINE optoConduit_ #-}
+
+foldOpto
+    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
+    => RunOpts (FoldSampleT rs m) a
+    -> a
+    -> OptoM (FoldSampleT rs m) v a
+    -> rs
+    -> m (a, rs, OptoM (FoldSampleT rs m) v a)
+foldOpto ro x0 o = fmap shuffle
+                 . runFoldSampleT (runOptoSample ro x0 o)
+  where
+    shuffle (Nothing, rs)       = (x0, rs, o )
+    shuffle (Just (x', o'), rs) = (x', rs, o')
+    {-# INLINE shuffle #-}
+{-# INLINE foldOpto #-}
+
+foldOpto_
+    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
+    => RunOpts (FoldSampleT rs m) a
+    -> a
+    -> OptoM (FoldSampleT rs m) v a
+    -> rs
+    -> m (a, rs)
+foldOpto_ ro x0 o = (fmap . first) (fromMaybe x0)
+                  . runFoldSampleT (evalOptoSample ro x0 o)
+{-# INLINE foldOpto_ #-}
+
+refOpto
+    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
+    => RunOpts (RefSample vrs r m) a
+    -> a
+    -> OptoM (RefSample vrs r m) va a
+    -> vrs
+    -> m (a, OptoM (RefSample vrs r m) va a)
+refOpto ro x0 o = fmap (fromMaybe (x0, o))
+                . runRefSample (runOptoSample ro x0 o)
+{-# INLINE refOpto #-}
+
+refOpto_
+    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
+    => RunOpts (RefSample vrs r m) a
+    -> a
+    -> OptoM (RefSample vrs r m) va a
+    -> vrs
+    -> m a
+refOpto_ ro x0 o = fmap (fromMaybe x0)
+                 . runRefSample (evalOptoSample ro x0 o)
+{-# INLINE refOpto_ #-}
+
+
+
 
 -- mean :: (Foldable t, Fractional a) => t a -> a
 -- mean = go . foldMap (`Sum2` 1)

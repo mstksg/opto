@@ -21,14 +21,9 @@ module Numeric.Opto.Core (
   , pureGrad, pureSampling
   ) where
 
-import           Control.Monad.Sample
-import           Control.Applicative
-import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.ST
-import           Control.Monad.Trans.Class
-import           Control.Monad.Trans.Maybe
-import           Data.Conduit
+import           Control.Monad.Sample
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Type.ZipProd

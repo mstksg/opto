@@ -17,9 +17,7 @@ module Numeric.Opto.Backprop (
   , bpGradSample
   ) where
 
-import           Control.Monad
 import           Control.Monad.Sample
-import           Data.Conduit
 import           Numeric.Backprop
 import           Numeric.Opto.Core
 
