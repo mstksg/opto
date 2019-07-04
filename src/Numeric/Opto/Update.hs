@@ -60,7 +60,6 @@ class (Num c, Additive a) => Scaling c a | a -> c where
 
     default (.*) :: (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
     (.*) = gScale
-    default scaleOne :: Num c => c
     scaleOne = 1
 
 gScale :: forall c a. (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a

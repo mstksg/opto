@@ -141,7 +141,6 @@ instance Fractional c => Default (AdaMax c) where
 adaMax
     :: forall m v a c.
      ( RealFloat c
-     , Floating a
      , Metric c a
      , ScalingInPlace m v c a
      , PrimMonad m
