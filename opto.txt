@@ -111,34 +111,94 @@ module Control.Monad.Sample
 --   you re-fill it first.
 class MonadPlus m => MonadSample r m | m -> r
 sample :: MonadSample r m => m r
+
+-- | Should never "fail"
 sampleN :: (MonadSample r m, Vector v r) => Int -> m (v r)
 flushSamples :: MonadSample r m => m [r]
 
 -- | Pulls samples until it cannot pull any more, and returns N shuffled
 --   items from the pool. Is O(N) memory.
 sampleReservoir :: forall m v r. (PrimMonad m, MonadSample r m, Vector v r) => Int -> Gen (PrimState m) -> m (v r)
-data SampleAct m r
-SA :: m (Maybe r) -> (forall v. Vector v r => Int -> m (Maybe (v r))) -> SampleAct m r
-[saSample] :: SampleAct m r -> m (Maybe r)
-[saSampleN] :: SampleAct m r -> forall v. Vector v r => Int -> m (Maybe (v r))
-newtype SampleT r m a
-ST :: MaybeT (ReaderT (SampleAct m r) m) a -> SampleT r m a
-[sampleTReader] :: SampleT r m a -> MaybeT (ReaderT (SampleAct m r) m) a
-pattern SampleT :: (SampleAct m r -> m (Maybe a)) -> SampleT r m a
-runSampleT :: () => SampleT r m a -> SampleAct m r -> m (Maybe a)
-simpleSA :: forall m r. Monad m => m (Maybe r) -> SampleAct m r
-saRef :: Ref m [r] v => v -> SampleAct m r
-saState :: MonadState [r] m => SampleAct m r
-saConduit :: Monad m => SampleAct (ConduitT r o m) r
-instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.SampleT r m)
-instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.SampleT r m)
-instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.SampleT r m)
-instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.SampleT r m)
-instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.SampleT r m)
-instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.SampleT r m)
-instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.SampleT r m)
-instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.SampleT r)
-instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.SampleT r m)
+newtype ConduitSample i o m a
+ConduitSample :: ConduitT i o m (Maybe a) -> ConduitSample i o m a
+[runConduitSample] :: ConduitSample i o m a -> ConduitT i o m (Maybe a)
+conduitSample :: ConduitT i o m a -> ConduitSample i o m a
+newtype RefSample v r m a
+RefSample :: (v -> m (Maybe a)) -> RefSample v r m a
+[runRefSample] :: RefSample v r m a -> v -> m (Maybe a)
+newtype FoldSampleT rs m a
+FoldSampleT :: (rs -> m (Maybe a, rs)) -> FoldSampleT rs m a
+[runFoldSampleT] :: FoldSampleT rs m a -> rs -> m (Maybe a, rs)
+pattern FoldSample :: (rs -> (Maybe a, rs)) -> FoldSample rs a
+type FoldSample rs = FoldSampleT rs Identity
+foldSample :: Monad m => (rs -> (Maybe a, rs)) -> FoldSampleT rs m a
+instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.FoldSampleT rs m)
+instance GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.FoldSampleT rs m)
+instance GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.FoldSampleT rs m)
+instance GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.FoldSampleT rs m)
+instance GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.FoldSampleT rs m)
+instance GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.FoldSampleT rs m)
+instance forall v k (r :: k) (m :: * -> *). Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.RefSample v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.MonadPlus (Control.Monad.Sample.RefSample v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Alternative (Control.Monad.Sample.RefSample v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Monad (Control.Monad.Sample.RefSample v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Monad m => GHC.Base.Applicative (Control.Monad.Sample.RefSample v r m)
+instance forall v k (r :: k) (m :: * -> *). GHC.Base.Functor m => GHC.Base.Functor (Control.Monad.Sample.RefSample v r m)
+instance Control.Monad.IO.Class.MonadIO m => Control.Monad.IO.Class.MonadIO (Control.Monad.Sample.ConduitSample i o m)
+instance GHC.Base.MonadPlus (Control.Monad.Sample.ConduitSample i o m)
+instance GHC.Base.Alternative (Control.Monad.Sample.ConduitSample i o m)
+instance GHC.Base.Monad (Control.Monad.Sample.ConduitSample i o m)
+instance GHC.Base.Applicative (Control.Monad.Sample.ConduitSample i o m)
+instance GHC.Base.Functor (Control.Monad.Sample.ConduitSample i o m)
+instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.FoldSampleT rs)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.FoldSampleT rs m)
+instance (GHC.Base.Monad m, Data.MonoTraversable.Element rs Data.Type.Equality.~ r, Data.Sequences.IsSequence rs, Data.Sequences.Index rs Data.Type.Equality.~ GHC.Types.Int) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.FoldSampleT rs m)
+instance forall k (m :: * -> *) v (r :: k). Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.RefSample v r m)
+instance forall k v (r :: k). Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.RefSample v r)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m rs v, Data.MonoTraversable.Element rs Data.Type.Equality.~ r, Data.Sequences.IsSequence rs, Data.Sequences.Index rs Data.Type.Equality.~ GHC.Types.Int) => Control.Monad.Sample.MonadSample r (Control.Monad.Sample.RefSample v r m)
+instance Control.Monad.Primitive.PrimMonad m => Control.Monad.Primitive.PrimMonad (Control.Monad.Sample.ConduitSample i o m)
+instance Control.Monad.Trans.Class.MonadTrans (Control.Monad.Sample.ConduitSample i o)
+instance GHC.Base.Monad m => Control.Monad.Sample.MonadSample i (Control.Monad.Sample.ConduitSample i o m)
+
+
+-- | Conduits that are useful for sampling and running optimizers.
+module Numeric.Opto.Run.Conduit
+
+-- | Outputs a shuffled version of the input stream. Keeps entire input
+--   stream in memory.
+--   
+--   NOTE: Pulls the entire input stream into memory first before
+--   outputting anything.
+shuffling :: PrimMonad m => Gen (PrimState m) -> ConduitT a a m ()
+
+-- | Takes the first N items out of the input stream, shuffles them
+--   in-memory, and outputs the shuffled result.
+--   
+--   Leaves the rest of the items in the stream.
+--   
+--   Use <a>forever</a> to repeat multiple times until the stream is
+--   exhausted.
+shufflingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
+
+-- | Process an entire stream, and keep N random and shuffled items from
+--   that stream. Is O(N) memory.
+--   
+--   Returns the entire stream shuffled if the stream has less than N
+--   elements.
+sinkSampleReservoir :: forall m v a o. (PrimMonad m, Vector v a) => Int -> Gen (PrimState m) -> ConduitT a o m (v a)
+
+-- | Process an entire stream, and yield N random items from that stream.
+--   Is O(N) memory.
+--   
+--   Yields the entire input stream shuffled if the stream has less than N
+--   elements.
+--   
+--   NOTE: Exhausts the entire input stream first before outputting
+--   anything, but never keeps the entire stream in memory.
+samplingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
+
+-- | Drops and lets items through randomly with a given probability.
+skipSampling :: PrimMonad m => Double -> Gen (PrimState m) -> ConduitT a a m ()
 
 module Numeric.Opto.Update
 class Additive a
@@ -154,7 +214,6 @@ class (Num c, Additive a) => Scaling c a | a -> c
 (.*) :: Scaling c a => c -> a -> a
 scaleOne :: Scaling c a => c
 (.*) :: (Scaling c a, ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
-scaleOne :: (Scaling c a, Num c) => c
 infixl 7 .*
 gScale :: forall c a. (ADTRecord a, Constraints a (Scaling c)) => c -> a -> a
 class Scaling c a => Metric c a
@@ -268,13 +327,20 @@ module Numeric.Opto.Run
 
 -- | Options for running an optimizer.
 data RunOpts m a
-RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
+RO :: (Diff a -> a -> m Bool) -> (a -> m ()) -> Maybe Int -> Maybe Int -> Maybe Int -> RunOpts m a
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
+
+-- | reporting function
+[roReport] :: RunOpts m a -> a -> m ()
+
+-- | number of batches to run (default = Nothing = until failure)
 [roLimit] :: RunOpts m a -> Maybe Int
+
+-- | batching updates (default = Nothing = no batching)
 [roBatch] :: RunOpts m a -> Maybe Int
 
--- | Construct a <a>RunOpts</a> without a stopping condition.
-noStop :: Applicative m => Maybe Int -> Maybe Int -> RunOpts m a
+-- | batches per report (default = Nothing = every batch)
+[roFreq] :: RunOpts m a -> Maybe Int
 
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
@@ -285,113 +351,17 @@ PO :: Maybe Int -> Int -> ParallelOpts
 
 -- | How much each thread will process before regrouping
 [poSplitRuns] :: ParallelOpts -> Int
-
--- | Optimize an <tt>a</tt> many times, until the stopping condition or
---   limit is reached.
-evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
-
--- | Like <a>evalOpto</a>, but returns a closure from which one can
---   "resume" the optimizer from where it leaves off with its state.
+runOptoSample :: MonadSample r m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
+evalOptoSample :: MonadSample r m => RunOpts m a -> a -> OptoM m v a -> m a
+optoConduit :: Monad m => RunOpts (ConduitSample i a m) a -> a -> OptoM (ConduitSample i a m) v a -> ConduitT i a m (OptoM (ConduitSample i a m) v a)
+optoConduit_ :: Monad m => RunOpts (ConduitSample i a m) a -> a -> OptoM (ConduitSample i a m) v a -> ConduitT i a m ()
+refOpto :: (Monad m, Ref m rs vrs, Element rs ~ r, IsSequence rs, Index rs ~ Int) => RunOpts (RefSample vrs r m) a -> a -> OptoM (RefSample vrs r m) va a -> vrs -> m (a, OptoM (RefSample vrs r m) va a)
+refOpto_ :: (Monad m, Ref m rs vrs, Element rs ~ r, IsSequence rs, Index rs ~ Int) => RunOpts (RefSample vrs r m) a -> a -> OptoM (RefSample vrs r m) va a -> vrs -> m a
+foldOpto :: (Monad m, IsSequence rs, Index rs ~ Int) => RunOpts (FoldSampleT rs m) a -> a -> OptoM (FoldSampleT rs m) v a -> rs -> m (a, rs, OptoM (FoldSampleT rs m) v a)
+foldOpto_ :: (Monad m, IsSequence rs, Index rs ~ Int) => RunOpts (FoldSampleT rs m) a -> a -> OptoM (FoldSampleT rs m) v a -> rs -> m (a, rs)
 runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
-
--- | A version of <a>evalOpto</a>, but allowing the sampling action and
---   stopping condition to take advantage of an underlying
---   <a>Alternative</a> instance, where 'empty'/'mzero' will quit
---   immediately.
-evalOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m a
-
--- | A version of <a>runOpto</a>, but allowing the sampling action and
---   stopping condition to take advantage of an underlying
---   <a>Alternative</a> instance, where 'empty'/'mzero' will quit
---   immediately.
-runOptoAlt :: MonadPlus m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
-
--- | Optimize an <tt>a</tt> times in parallel, and aggregate all the
---   results together by taking the mean.
-evalOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m a
-
--- | Like <a>evalOptoParallel</a>, but returns closures (one for each
---   thread) from which one can "resume" an optimizer from where it leaves
---   off with its state in each thread.
-runOptoParallel :: (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> OptoM m v a -> m (a, [OptoM m v a])
-instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
-instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
-
-
--- | Conduits that are useful for sampling and running optimizers.
-module Numeric.Opto.Run.Conduit
-
--- | Options for running an optimizer.
-data RunOpts m a
-RO :: (Diff a -> a -> m Bool) -> Maybe Int -> Maybe Int -> RunOpts m a
-[roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
-[roLimit] :: RunOpts m a -> Maybe Int
-[roBatch] :: RunOpts m a -> Maybe Int
-
--- | With <a>RunOpts</a>, a chunk size, an initial input, and a
---   <i>sampling</i> optimizer, give a conduit that processes upstream
---   samples and outputs every single one of the updated values as they are
---   generated.
---   
---   Upon the end of execution, returns a closure from which one can
---   "resume" the optimizer from where it leaves off with its state.
-runOptoConduit :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
-
--- | <a>runOptoConduit</a>, without returning the continuing closure.
-runOptoConduit_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
-
--- | With <a>RunOpts</a>, a chunk size, an initial input, and a
---   <i>sampling</i> optimizer, give a conduit that processes upstream
---   samples and outputs the updated value only <i>after</i> the optimizer
---   finishes.
---   
---   Upon the end of execution, returns a closure from which one can
---   "resume" the optimizer from where it leaves off with its state.
-runOptoConduitChunk :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m (OptoM (SampleT r (ConduitT r a m)) v a)
-
--- | <a>runOptoConduitChunk</a>, without returning and freezing the updated
---   optimizer state.
-runOptoConduitChunk_ :: Monad m => RunOpts (SampleT r (ConduitT r a m)) a -> a -> OptoM (SampleT r (ConduitT r a m)) v a -> ConduitT r a m ()
-
--- | Options for running an optimizer in a concurrent setting.
-data ParallelOpts
-PO :: Maybe Int -> Int -> ParallelOpts
-
--- | Number of threads. Will default to max capacity
-[poThreads] :: ParallelOpts -> Maybe Int
-
--- | How much each thread will process before regrouping
-[poSplitRuns] :: ParallelOpts -> Int
-
--- | Outputs a shuffled version of the input stream. Keeps entire input
---   stream in memory.
---   
---   NOTE: Pulls the entire input stream into memory first before
---   outputting anything.
-shuffling :: PrimMonad m => Gen (PrimState m) -> ConduitT a a m ()
-
--- | Takes the first N items out of the input stream, shuffles them
---   in-memory, and outputs the shuffled result.
---   
---   Leaves the rest of the items in the stream.
---   
---   Use <a>forever</a> to repeat multiple times until the stream is
---   exhausted.
-shufflingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
-
--- | Process an entire stream, and keep N random and shuffled items from
---   that stream. Is O(N) memory.
-sinkSampleReservoir :: forall m v a o. (PrimMonad m, Vector v a) => Int -> Gen (PrimState m) -> ConduitT a o m (v a)
-
--- | Process an entire stream, and yield N random items from that stream.
---   Is O(N) memory.
---   
---   NOTE: Exhausts the entire input stream first before outputting
---   anything, but never keeps the entire stream in memory.
-samplingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
-
--- | Drops and lets items through randomly with a given probability.
-skipSampling :: PrimMonad m => Double -> Gen (PrimState m) -> ConduitT a a m ()
+evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
+instance GHC.Base.Applicative m => Data.Default.Class.Default (Numeric.Opto.Run.RunOpts m a)
 
 module Numeric.Opto.Optimizer
 steepestDescent :: forall m v a c. (ScalingInPlace m v c a, Applicative m) => c -> Grad m a -> OptoM m v a
@@ -416,7 +386,7 @@ AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxDecay1] :: AdaMax c -> !c
 [adaMaxDecay2] :: AdaMax c -> !c
 [adaMaxEpsilon] :: AdaMax c -> !c
-adaMax :: forall m v a c. (RealFloat c, Floating a, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> Grad m a -> OptoM m v a
+adaMax :: forall m v a c. (RealFloat c, Metric c a, ScalingInPlace m v c a, PrimMonad m) => AdaMax c -> Grad m a -> OptoM m v a
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adam c)
@@ -441,7 +411,7 @@ bpGrad :: (Monad m, Backprop a, Backprop b) => (forall s. Reifies s W => BVar s 
 
 -- | Turn a <tt>a -&gt; b</tt> function parameterized on <tt>r</tt> into a
 --   <tt><a>Grad</a> m a</tt>.
-bpGradSample :: (MonadSample r m, Backprop a, Backprop b) => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b) -> Grad m a
+bpGradSample :: (Backprop a, Backprop b, MonadSample r m) => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b) -> Grad m a
 
 module Numeric.Opto
 
