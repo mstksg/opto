@@ -169,23 +169,23 @@ shufflingN n g = do
 
 -- | Process an entire stream, and keep N random and shuffled items from
 -- that stream.  Is O(N) memory.
+--
+-- Returns the entire stream shuffled if the stream has less than
+-- N elements.
 sinkSampleReservoir
     :: forall m v a o. (PrimMonad m, VG.Vector v a)
     => Int
     -> MWC.Gen (PrimState m)
     -> ConduitT a o m (v a)
-sinkSampleReservoir k g = do
-    xs <- VG.thaw . VG.fromList . catMaybes =<< replicateM k await
-    void . runMaybeT . for_ [k+1 ..] $ \i -> do
-      x <- MaybeT await
-      lift . lift $ do
-        j <- MWC.uniformR (1, i) g
-        when (j <= k) $
-          VG.unsafeWrite xs (j - 1) x
-    lift $ VG.freeze xs
+sinkSampleReservoir k = fmap (fromMaybe VG.empty)
+                      . runConduitSample
+                      . sampleReservoir k
 
 -- | Process an entire stream, and yield N random items from that stream.
 -- Is O(N) memory.
+--
+-- Yields the entire input stream shuffled if the stream has less than
+-- N elements.
 --
 -- NOTE: Exhausts the entire input stream first before outputting anything,
 -- but never keeps the entire stream in memory.

@@ -47,6 +47,8 @@ library:
   - unliftio-core
   - vector-sized >= 1.0
   - vinyl
+  - containers
+  - mono-traversable
 
 executables:
   opto-neural:

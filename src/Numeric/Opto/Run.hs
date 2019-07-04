@@ -31,13 +31,14 @@ module Numeric.Opto.Run (
   ) where
 
 import           Control.Applicative
-import           Data.Default
 import           Control.Monad
 import           Control.Monad.IO.Unlift
+import           Control.Monad.Sample
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State.Strict
 import           Data.Conduit
+import           Data.Default
 import           Data.Functor
 import           Data.Maybe
 import           Numeric.Opto.Core
@@ -51,9 +52,10 @@ import qualified Data.Conduit                     as C
 -- | Options for running an optimizer.
 data RunOpts m a = RO
     { roStopCond :: Diff a -> a -> m Bool
-    , roLimit    :: Maybe Int -- ^ number of batches to run (default = Nothing = until failure)
-    , roBatch    :: Maybe Int -- ^ batching updates (default = Nothing = no batching)
-    , roReport   :: Maybe Int -- ^ batches per report (default = Nothing = every batch)
+    , roReport   :: a -> m ()  -- ^ reporting function
+    , roLimit    :: Maybe Int  -- ^ number of batches to run (default = Nothing = until failure)
+    , roBatch    :: Maybe Int  -- ^ batching updates (default = Nothing = no batching)
+    , roFreq     :: Maybe Int  -- ^ batches per report (default = Nothing = every batch)
     }
 
 -- | Options for running an optimizer in a concurrent setting.
@@ -63,7 +65,13 @@ data ParallelOpts = PO
     }
 
 instance Applicative m => Default (RunOpts m a) where
-    def = RO (\_ _ -> pure False) Nothing Nothing Nothing
+    def = RO
+      { roStopCond = \_ _ -> pure False
+      , roReport   = \_   -> pure ()
+      , roLimit    = Nothing
+      , roBatch    = Nothing
+      , roFreq     = Nothing
+      }
 
 optoConduit
     :: forall m v a i. Monad m
@@ -74,15 +82,16 @@ optoConduit
 optoConduit RO{..} x0 o0@MkOptoM{..} = fmap (fromMaybe o0) . runConduitSample $ do
     rSs <- thawRefs oInit
     rX  <- thawRef @_ @a @v x0
-    optoLoop roLimit roBatch roReport
+    optoLoop roLimit roBatch roFreq
         (thawRef @_ @a @v)
         (.*+=)
         freezeRef
         rX
         (oUpdate rSs)
         roStopCond
-        (conduitSample . C.yield)
+        (\x -> conduitSample (C.yield x) *> roReport x)
     flip MkOptoM oUpdate <$> pullRefs rSs
+{-# INLINE optoConduit #-}
 
 optoConduit_
     :: forall m v a i. Monad m
@@ -91,7 +100,48 @@ optoConduit_
     -> OptoM (ConduitSample i a m) v a
     -> ConduitT i a m ()
 optoConduit_ ro x0 = void . optoConduit ro x0
+{-# INLINE optoConduit_ #-}
 
+runOpto
+    :: forall m v a. Monad m
+    => RunOpts m a
+    -> a
+    -> OptoM m v a
+    -> m (a, OptoM m v a)
+runOpto ro x0 o = runOpto_ ro x0 o (liftA2 (,))
+{-# INLINE runOpto #-}
+
+evalOpto
+    :: forall m v a. Monad m
+    => RunOpts m a
+    -> a
+    -> OptoM m v a
+    -> m a
+evalOpto ro x0 o = runOpto_ ro x0 o const
+{-# INLINE evalOpto #-}
+
+runOpto_
+    :: forall m v a r. Monad m
+    => RunOpts m a
+    -> a
+    -> OptoM m v a
+    -> (m a -> m (OptoM m v a) -> m r)
+    -> m r
+runOpto_ RO{..} x0 MkOptoM{..} f = do
+    rSs <- thawRefs oInit
+    rX  <- thawRef @_ @a @v x0
+    _   <- runMaybeT $ optoLoop roLimit roBatch roFreq
+        (lift . thawRef @_ @a @v)
+        (\c x -> lift (c .*+= x))
+        (lift . freezeRef)
+        rX
+        (lift . oUpdate rSs)
+        (\g -> lift . roStopCond g)
+        (lift . roReport)
+    f (freezeRef rX) (flip MkOptoM oUpdate <$> pullRefs rSs)
+{-# INLINE runOpto_ #-}
+
+-- TODO: benchmark with just normal recursion
 optoLoop
     :: forall m v a c. (MonadPlus m, Scaling c a)
     => Maybe Int
@@ -119,7 +169,8 @@ optoLoop lim batch report initXVar updateXVar readXVar xVar updateState stop act
       Nothing -> lift $ act =<< readXVar xVar
       Just r  -> get >>= \i -> do
         if i <= r
-          then put (i + 1)
+          then let !i' = i + 1
+               in  put i'
           else do
             lift $ act =<< readXVar xVar
             put 1
@@ -135,6 +186,9 @@ optoLoop lim batch report initXVar updateXVar readXVar xVar updateState stop act
           updateXVar v =<< updateState x
         (scaleOne @c @a,) <$> readXVar v
 {-# INLINE optoLoop #-}
+
+
+-- -- optoConduit RO{..} x0 o0@MkOptoM{..} = fmap (fromMaybe o0) . runConduitSample $ do
 
 -- mean :: (Foldable t, Fractional a) => t a -> a
 -- mean = go . foldMap (`Sum2` 1)

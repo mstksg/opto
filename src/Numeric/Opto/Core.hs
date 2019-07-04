@@ -1,9 +1,11 @@
 {-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -17,10 +19,9 @@ module Numeric.Opto.Core (
   , fromCopying, fromStateless
   , sampling
   , pureGrad, pureSampling
-  , ConduitSample(..), conduitSample
   ) where
 
--- import           Control.Monad.Sample
+import           Control.Monad.Sample
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Primitive
@@ -36,21 +37,6 @@ import           Numeric.Opto.Update
 
 type Diff   a = a
 type Grad m a = a -> m (Diff a)
-
-newtype ConduitSample i o m a = ConduitSample
-    { runConduitSample :: ConduitT i o m (Maybe a) }
-  deriving (Functor)
-  deriving (Applicative, Monad, Alternative, MonadPlus) via (MaybeT (ConduitT i o m))
-
-instance PrimMonad m => PrimMonad (ConduitSample i o m) where
-    type PrimState (ConduitSample i o m) = PrimState m
-    primitive = lift . primitive
-
-instance MonadTrans (ConduitSample i o) where
-    lift = ConduitSample . lift . fmap Just
-
-conduitSample :: ConduitT i o m a -> ConduitSample i o m a
-conduitSample = ConduitSample . fmap Just
 
 data OptoM :: (Type -> Type) -> Type -> Type -> Type where
     MkOptoM :: ScalingInPlace m v c a
@@ -87,12 +73,12 @@ fromStateless update =
             }
 
 sampling
-    :: Monad m
+    :: MonadSample r m
     => (r -> Grad m a)
-    -> Grad (ConduitSample r o m) a
+    -> Grad m a
 sampling f x = do
-    r <- ConduitSample await
-    lift $ f r x
+    r <- sample
+    f r x
 
 pureGrad
     :: Applicative m
@@ -101,7 +87,7 @@ pureGrad
 pureGrad f = pure . f
 
 pureSampling
-    :: Monad m
+    :: MonadSample r m
     => (r -> a -> Diff a)
-    -> Grad (ConduitSample r o m) a
+    -> Grad m a
 pureSampling f = sampling (pureGrad . f)
