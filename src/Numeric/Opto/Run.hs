@@ -230,6 +230,9 @@ optoConduit_
 optoConduit_ ro x0 = void . optoConduit ro x0
 {-# INLINE optoConduit_ #-}
 
+-- | 'runOptoSample' specialized for 'FoldSampleT': give it a collection of
+-- items @rs@, and it will process each item @r@.  Returns the optimized
+-- @a@, the leftover @rs@, and a closure 'OptoM' that can be resumed.
 foldOpto
     :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
     => RunOpts (FoldSampleT rs m) a
@@ -245,6 +248,8 @@ foldOpto ro x0 o = fmap shuffle
     {-# INLINE shuffle #-}
 {-# INLINE foldOpto #-}
 
+-- | 'evalOptoSample' specialized for 'FoldSampleT'.  Basically 'foldOpto',
+-- without returning the resumable closure.
 foldOpto_
     :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
     => RunOpts (FoldSampleT rs m) a
@@ -256,6 +261,15 @@ foldOpto_ ro x0 o = (fmap . first) (fromMaybe x0)
                   . runFoldSampleT (evalOptoSample ro x0 o)
 {-# INLINE foldOpto_ #-}
 
+-- | 'runOptoSample' specialized for 'RefSample': give it a mutable
+-- reference @vrs@ to a collection of items @rs@, and it will process each
+-- item @r@ while emptying out the mutable reference.
+--
+-- It will terminate and return a result as soon as the reference is empty.
+-- You can add more items to the mutable reference as it is being
+-- processed, and it will process it as long as it hasn't yet completed.
+--
+-- Returns the optimized @a@, and a closure 'OptoM' that can be resumed.
 refOpto
     :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
     => RunOpts (RefSample vrs r m) a
