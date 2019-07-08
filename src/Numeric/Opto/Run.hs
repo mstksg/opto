@@ -256,36 +256,38 @@ optoConduit_
 optoConduit_ ro x0 = void . optoConduit ro x0
 {-# INLINE optoConduit_ #-}
 
----- | 'runOptoSample' specialized for 'FoldSampleT': give it a collection of
----- items @rs@, and it will process each item @r@.  Returns the optimized
----- @a@, the leftover @rs@, and a closure 'OptoM' that can be resumed.
---foldOpto
---    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
---    => RunOpts (FoldSampleT rs m) a
---    -> a
---    -> OptoM (FoldSampleT rs m) v a
---    -> rs
---    -> m (a, rs, OptoM (FoldSampleT rs m) v a)
---foldOpto ro x0 o = fmap shuffle
---                 . runFoldSampleT (runOptoSample ro x0 o)
---  where
---    shuffle (Nothing, rs)       = (x0, rs, o )
---    shuffle (Just (x', o'), rs) = (x', rs, o')
---    {-# INLINE shuffle #-}
---{-# INLINE foldOpto #-}
+-- | 'runOptoSample' specialized for 'FoldSampleT': give it a collection of
+-- items @rs@, and it will process each item @r@.  Returns the optimized
+-- @a@, the leftover @rs@, and a closure 'OptoM' that can be resumed.
 
----- | 'evalOptoSample' specialized for 'FoldSampleT'.  Basically 'foldOpto',
----- without returning the resumable closure.
---foldOpto_
---    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
---    => RunOpts (FoldSampleT rs m) a
---    -> a
---    -> OptoM (FoldSampleT rs m) v a
---    -> rs
---    -> m (a, rs)
---foldOpto_ ro x0 o = (fmap . first) (fromMaybe x0)
---                  . runFoldSampleT (evalOptoSample ro x0 o)
---{-# INLINE foldOpto_ #-}
+foldOpto
+    :: (Monad m, O.IsSequence rs, r ~ Element rs)
+    => RunOpts (StateT rs m) a
+    -> a
+    -> OptoM (StateT rs m) v r a
+    -> rs
+    -> m (a, rs, OptoM (StateT rs m) v r a)
+foldOpto ro x0 o = fmap shuffle
+                 . runStateT (runOpto ro sampleState x0 o)
+  where
+    shuffle ((x', o'), rs) = (x', rs, o')
+
+foldOpto_
+    :: (Monad m, O.IsSequence rs, r ~ Element rs)
+    => RunOpts (StateT rs m) a
+    -> a
+    -> OptoM (StateT rs m) v r a
+    -> rs
+    -> m (a, rs)
+foldOpto_ ro x0 o = runStateT (evalOpto ro sampleState x0 o)
+
+sampleState
+    :: (Monad m, O.IsSequence rs)
+    => StateT rs m (Maybe (Element rs))
+sampleState = state $ \xs -> case O.uncons xs of
+  Nothing      -> (Nothing, mempty)
+  Just (y, ys) -> (Just y , ys    )
+
 
 ---- | 'runOptoSample' specialized for 'RefSample': give it a mutable
 ---- reference @vrs@ to a collection of items @rs@, and it will process each
