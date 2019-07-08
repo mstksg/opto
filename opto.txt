@@ -355,9 +355,29 @@ runOptoSample :: MonadSample r m => RunOpts m a -> a -> OptoM m v a -> m (a, Opt
 evalOptoSample :: MonadSample r m => RunOpts m a -> a -> OptoM m v a -> m a
 optoConduit :: Monad m => RunOpts (ConduitSample i a m) a -> a -> OptoM (ConduitSample i a m) v a -> ConduitT i a m (OptoM (ConduitSample i a m) v a)
 optoConduit_ :: Monad m => RunOpts (ConduitSample i a m) a -> a -> OptoM (ConduitSample i a m) v a -> ConduitT i a m ()
+
+-- | <a>runOptoSample</a> specialized for <a>RefSample</a>: give it a
+--   mutable reference <tt>vrs</tt> to a collection of items <tt>rs</tt>,
+--   and it will process each item <tt>r</tt> while emptying out the
+--   mutable reference.
+--   
+--   It will terminate and return a result as soon as the reference is
+--   empty. You can add more items to the mutable reference as it is being
+--   processed, and it will process it as long as it hasn't yet completed.
+--   
+--   Returns the optimized <tt>a</tt>, and a closure <a>OptoM</a> that can
+--   be resumed.
 refOpto :: (Monad m, Ref m rs vrs, Element rs ~ r, IsSequence rs, Index rs ~ Int) => RunOpts (RefSample vrs r m) a -> a -> OptoM (RefSample vrs r m) va a -> vrs -> m (a, OptoM (RefSample vrs r m) va a)
 refOpto_ :: (Monad m, Ref m rs vrs, Element rs ~ r, IsSequence rs, Index rs ~ Int) => RunOpts (RefSample vrs r m) a -> a -> OptoM (RefSample vrs r m) va a -> vrs -> m a
+
+-- | <a>runOptoSample</a> specialized for <a>FoldSampleT</a>: give it a
+--   collection of items <tt>rs</tt>, and it will process each item
+--   <tt>r</tt>. Returns the optimized <tt>a</tt>, the leftover
+--   <tt>rs</tt>, and a closure <a>OptoM</a> that can be resumed.
 foldOpto :: (Monad m, IsSequence rs, Index rs ~ Int) => RunOpts (FoldSampleT rs m) a -> a -> OptoM (FoldSampleT rs m) v a -> rs -> m (a, rs, OptoM (FoldSampleT rs m) v a)
+
+-- | <a>evalOptoSample</a> specialized for <a>FoldSampleT</a>. Basically
+--   <a>foldOpto</a>, without returning the resumable closure.
 foldOpto_ :: (Monad m, IsSequence rs, Index rs ~ Int) => RunOpts (FoldSampleT rs m) a -> a -> OptoM (FoldSampleT rs m) v a -> rs -> m (a, rs)
 runOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m (a, OptoM m v a)
 evalOpto :: Monad m => RunOpts m a -> a -> OptoM m v a -> m a
