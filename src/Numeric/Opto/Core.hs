@@ -15,7 +15,7 @@
 {-# LANGUAGE ViewPatterns               #-}
 
 module Numeric.Opto.Core (
-    Diff, Grad, OptoM(..), Opto
+    Diff, Grad, Opto(..), Opto
   , fromCopying, fromStateless
   , pureGrad
   , nonSampling, pureNonSampling
@@ -33,26 +33,24 @@ import           Numeric.Opto.Update
 type Diff     a = a
 type Grad m r a = r -> a -> m (Diff a)
 
-data OptoM :: (Type -> Type) -> Type -> Type -> Type -> Type where
-    MkOptoM :: ScalingInPlace m v c a
-            => { oInit   :: !( RefVals m ss sVars )
-               , oUpdate :: !( RefVars m ss sVars
-                            -> r
-                            -> a
-                            -> m (c, Diff a)
-                             )
-               }
-            -> OptoM m v r a
-
-type Opto s = OptoM (ST s)
+data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type where
+    MkOpto :: ScalingInPlace m v c a
+           => { oInit   :: !( RefVals m ss sVars )
+              , oUpdate :: !( RefVars m ss sVars
+                           -> r
+                           -> a
+                           -> m (c, Diff a)
+                            )
+              }
+           -> Opto m v r a
 
 fromCopying
     :: (PrimMonad m, ScalingInPlace m v c a)
     => s
     -> (r -> a -> s -> m (c, Diff a, s))
-    -> OptoM m v r a
+    -> Opto m v r a
 fromCopying s0 update =
-    MkOptoM { oInit   = onlyZP (RVl s0)
+    MkOpto { oInit   = onlyZP (RVl s0)
             , oUpdate = \(headZP->RVr rS) r x -> do
                 (c, g, s) <- update r x =<< readMutVar rS
                 writeMutVar rS s
@@ -62,9 +60,9 @@ fromCopying s0 update =
 fromStateless
     :: ScalingInPlace m v c a
     => (r -> a -> m (c, Diff a))
-    -> OptoM m v r a
+    -> Opto m v r a
 fromStateless update =
-    MkOptoM { oInit   = ZPØ
+    MkOpto { oInit   = ZPØ
             , oUpdate = \_ -> update
             }
 
