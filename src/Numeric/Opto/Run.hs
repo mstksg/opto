@@ -21,16 +21,16 @@ module Numeric.Opto.Run (
   -- * Options
     RunOpts(..)
   , ParallelOpts(..)
-  -- * Sampling
-  , runOptoSample
-  , evalOptoSample
-  -- ** Specific Sampling Monads
-  , optoConduit, optoConduit_
-  , refOpto, refOpto_
-  , foldOpto, foldOpto_
-  -- * Non-Sampling
-  , runOpto
-  , evalOpto
+  -- -- * Sampling
+  -- , runOptoSample
+  -- , evalOptoSample
+  -- -- ** Specific Sampling Monads
+  -- , optoConduit, optoConduit_
+  -- , refOpto, refOpto_
+  -- , foldOpto, foldOpto_
+  -- -- * Non-Sampling
+  -- , runOpto
+  -- , evalOpto
   -- , evalOpto, runOpto
   -- , evalOptoAlt, runOptoAlt
   -- -- * Parallel
@@ -64,9 +64,9 @@ import qualified Data.Sequences                   as O
 data RunOpts m a = RO
     { roStopCond :: Diff a -> a -> m Bool
     , roReport   :: a -> m ()  -- ^ reporting function
-    , roLimit    :: Maybe Int  -- ^ number of batches to run (default = Nothing = until failure)
-    , roBatch    :: Maybe Int  -- ^ batching updates (default = Nothing = no batching)
-    , roFreq     :: Maybe Int  -- ^ batches per report (default = Nothing = every batch)
+    , roLimit    :: Maybe Int  -- ^ number of batches to run (Nothing = run forever)
+    , roBatch    :: Int        -- ^ batching updates
+    , roFreq     :: Maybe Int  -- ^ batches per report (Nothing = never report)
     }
 
 -- | Options for running an optimizer in a concurrent setting.
@@ -80,217 +80,243 @@ instance Applicative m => Default (RunOpts m a) where
       { roStopCond = \_ _ -> pure False
       , roReport   = \_   -> pure ()
       , roLimit    = Nothing
-      , roBatch    = Nothing
-      , roFreq     = Nothing
+      , roBatch    = 1
+      , roFreq     = Just 1
       }
 
-runOptoSample
-    :: MonadSample r m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
-runOptoSample ro x o = runOptoSample_ ro x o (liftA2 (,))
-{-# INLINE runOptoSample #-}
+--runOptoSample
+--    :: MonadSample r m
+--    => RunOpts m a
+--    -> a
+--    -> OptoM m v a
+--    -> m (a, OptoM m v a)
+--runOptoSample ro x o = runOptoSample_ ro x o (liftA2 (,))
+--{-# INLINE runOptoSample #-}
 
-evalOptoSample
-    :: MonadSample r m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> m a
-evalOptoSample ro x o = runOptoSample_ ro x o const
-{-# INLINE evalOptoSample #-}
+--evalOptoSample
+--    :: MonadSample r m
+--    => RunOpts m a
+--    -> a
+--    -> OptoM m v a
+--    -> m a
+--evalOptoSample ro x o = runOptoSample_ ro x o const
+--{-# INLINE evalOptoSample #-}
 
-runOptoSample_
-    :: forall m v a r q. MonadSample r m
-    => RunOpts m a
-    -> a
-    -> OptoM m v a
-    -> (m a -> m (OptoM m v a) -> m q)
-    -> m q
-runOptoSample_ RO{..} x0 MkOptoM{..} f = do
-    rSs <- thawRefs oInit
-    rX  <- thawRef @_ @a @v x0
-    optoLoop roLimit roBatch roFreq
-        (thawRef @_ @a @v)
-        (.*+=)
-        freezeRef
-        rX
-        (oUpdate rSs)
-        roStopCond
-        roReport
-    f (freezeRef rX) (flip MkOptoM oUpdate <$> pullRefs rSs)
-{-# INLINE runOptoSample_ #-}
+--runOptoSample_
+--    :: forall m v a r q. MonadSample r m
+--    => RunOpts m a
+--    -> a
+--    -> OptoM m v a
+--    -> (m a -> m (OptoM m v a) -> m q)
+--    -> m q
+--runOptoSample_ RO{..} x0 MkOptoM{..} f = do
+--    rSs <- thawRefs oInit
+--    rX  <- thawRef @_ @a @v x0
+--    optoLoop roLimit roBatch roFreq
+--        (thawRef @_ @a @v)
+--        (.*+=)
+--        freezeRef
+--        rX
+--        (oUpdate rSs)
+--        roStopCond
+--        roReport
+--    f (freezeRef rX) (flip MkOptoM oUpdate <$> pullRefs rSs)
+--{-# INLINE runOptoSample_ #-}
 
 runOpto
     :: Monad m
     => RunOpts m a
+    -> m (Maybe r)
     -> a
-    -> OptoM m v a
-    -> m (a, OptoM m v a)
-runOpto ro x0 o = runOpto_ ro x0 o (liftA2 (,))
+    -> OptoM m v r a
+    -> m (a, OptoM m v r a)
+runOpto ro sampler x0 o = runOpto_ ro sampler x0 o (liftA2 (,))
 {-# INLINE runOpto #-}
+
+runOptoNonSampling
+    :: Monad m
+    => RunOpts m a
+    -> a
+    -> OptoM m v () a
+    -> m (a, OptoM m v () a)
+runOptoNonSampling ro = runOpto ro (pure (Just ()))
+{-# INLINE runOptoNonSampling #-}
 
 evalOpto
     :: Monad m
     => RunOpts m a
+    -> m (Maybe r)
     -> a
-    -> OptoM m v a
+    -> OptoM m v r a
     -> m a
-evalOpto ro x0 o = runOpto_ ro x0 o const
+evalOpto ro sampler x0 o = runOpto_ ro sampler x0 o const
 {-# INLINE evalOpto #-}
 
-runOpto_
-    :: forall m v a r. Monad m
+evalOptoNonSampling
+    :: Monad m
     => RunOpts m a
     -> a
-    -> OptoM m v a
-    -> (m a -> m (OptoM m v a) -> m r)
-    -> m r
-runOpto_ RO{..} x0 MkOptoM{..} f = do
+    -> OptoM m v () a
+    -> m a
+evalOptoNonSampling ro = evalOpto ro (pure (Just ()))
+{-# INLINE evalOptoNonSampling #-}
+
+runOpto_
+    :: forall m v a r q. Monad m
+    => RunOpts m a
+    -> m (Maybe r)
+    -> a
+    -> OptoM m v r a
+    -> (m a -> m (OptoM m v r a) -> m q)
+    -> m q
+runOpto_ RO{..} sampler x0 MkOptoM{..} f = do
     rSs <- thawRefs oInit
     rX  <- thawRef @_ @a @v x0
-    _   <- runMaybeT $ optoLoop roLimit roBatch roFreq
-        (lift . thawRef @_ @a @v)
-        (\c x -> lift (c .*+= x))
-        (lift . freezeRef)
-        rX
-        (lift . oUpdate rSs)
-        (\g -> lift . roStopCond g)
-        (lift . roReport)
+    optoLoop OL
+      { olLimit       = roLimit
+      , olBatch       = roBatch
+      , olReportFreq  = roFreq
+      , olInitialize  = thawRef @_ @a @v
+      , olUpdate      = (.*+=)
+      , olRead        = freezeRef
+      , olVar         = rX
+      , olSample      = sampler
+      , olUpdateState = oUpdate rSs
+      , olStopCond    = roStopCond
+      , olReportAct   = roReport
+      }
     f (freezeRef rX) (flip MkOptoM oUpdate <$> pullRefs rSs)
 {-# INLINE runOpto_ #-}
 
--- TODO: benchmark with just normal recursion
+data OptoLoop m v r a c = OL
+    { olLimit       :: Maybe Int
+    , olBatch       :: Int
+    , olReportFreq  :: Maybe Int
+    , olInitialize  :: a -> m v
+    , olUpdate      :: v -> (c, a) -> m ()
+    , olRead        :: v -> m a
+    , olVar         :: v
+    , olSample      :: m (Maybe r)
+    , olUpdateState :: r -> a -> m (c, a)
+    , olStopCond    :: Diff a -> a -> m Bool
+    , olReportAct   :: a -> m ()
+    }
+
 optoLoop
-    :: forall m v a c. (MonadPlus m, Scaling c a)
-    => Maybe Int
-    -> Maybe Int
-    -> Maybe Int
-    -> (a -> m v)
-    -> (v -> (c, a) -> m ())
-    -> (v -> m a)
-    -> v
-    -> (a -> m (c, a))
-    -> (Diff a -> a -> m Bool)
-    -> (a -> m ())
+    :: forall m v r a c. (Monad m, Scaling c a)
+    => OptoLoop m v r a c
     -> m ()
-optoLoop lim batch report initXVar updateXVar readXVar xVar updateState stop act =
-            flip evalStateT (1 :: Int) . repeatLim $ do
-    (x, c, g) <- lift $ do
-      x      <- readXVar xVar
-      (c, g) <- repeatBatch x
-      updateXVar xVar (c, g)
-      pure (x, c, g)
-    reporter
-    lift $ guard . not =<< stop (c .* g) x
+optoLoop OL{..} = go 0
   where
-    reporter = case report of
-      Nothing -> lift $ act =<< readXVar xVar
-      Just r  -> get >>= \i -> do
-        if i <= r
-          then let !i' = i + 1
-               in  put i'
-          else do
-            lift $ act =<< readXVar xVar
-            put 1
-    repeatLim = case lim of
-      Nothing -> void . many
-      Just l  -> replicateM_ l
-    repeatBatch !x = case batch of
-      Nothing -> updateState x
-      Just b  -> do
-        v <- initXVar addZero
-        -- TODO: should state be reset?
-        replicateM_ b $
-          updateXVar v =<< updateState x
-        (scaleOne @c @a,) <$> readXVar v
+    go !i = when (limCheck i) $ do
+      !x <- olRead olVar
+      (exhausted, cg) <- batcher x
+      forM_ cg $ \(c, g) -> do
+        olUpdate olVar (c, g)
+        when (reportCheck i) $
+          olReportAct =<< olRead olVar
+        stopper <- olStopCond (c .* g) x
+        when (not exhausted && not stopper) $
+          go (i + 1)
+    limCheck = case olLimit of
+      Nothing -> const True
+      Just l  -> (< l)
+    reportCheck = case olReportFreq of
+      Nothing -> const False
+      Just r  -> \i -> (i + 1) `mod` r == 0
+    batcher
+      | olBatch <= 1 = fmap (\y -> (isNothing y, y)) . runMaybeT . batchSingle
+      | otherwise    = batchLoop
+    batchSingle !x = lift . (`olUpdateState` x) =<< MaybeT olSample
+    batchLoop !x = do
+      v <- olInitialize addZero
+      k <- fmap isNothing . runMaybeT . replicateM olBatch $
+          lift . olUpdate v =<< batchSingle x
+      (k,) . Just . (scaleOne @c @a,) <$> olRead v
 {-# INLINE optoLoop #-}
 
 optoConduit
     :: Monad m
-    => RunOpts (ConduitSample i a m) a
+    => RunOpts (ConduitT r a m) a
     -> a
-    -> OptoM (ConduitSample i a m) v a
-    -> ConduitT i a m (OptoM (ConduitSample i a m) v a)
-optoConduit ro x0 o = fmap (fromMaybe o) . runConduitSample $
-    runOptoSample_ ro' x0 o (const id)
+    -> OptoM (ConduitT r a m) v r a
+    -> ConduitT r a m (OptoM (ConduitT r a m) v r a)
+optoConduit ro x0 o = runOpto_ ro' C.await x0 o (const id)
   where
-    ro' = ro { roReport = \x -> conduitSample (C.yield x) *> roReport ro x
+    ro' = ro { roReport = \x -> C.yield x *> roReport ro x
              }
 {-# INLINE optoConduit #-}
 
 optoConduit_
     :: Monad m
-    => RunOpts (ConduitSample i a m) a
+    => RunOpts (ConduitT r a m) a
     -> a
-    -> OptoM (ConduitSample i a m) v a
-    -> ConduitT i a m ()
+    -> OptoM (ConduitT r a m) v r a
+    -> ConduitT r a m ()
 optoConduit_ ro x0 = void . optoConduit ro x0
 {-# INLINE optoConduit_ #-}
 
--- | 'runOptoSample' specialized for 'FoldSampleT': give it a collection of
--- items @rs@, and it will process each item @r@.  Returns the optimized
--- @a@, the leftover @rs@, and a closure 'OptoM' that can be resumed.
-foldOpto
-    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
-    => RunOpts (FoldSampleT rs m) a
-    -> a
-    -> OptoM (FoldSampleT rs m) v a
-    -> rs
-    -> m (a, rs, OptoM (FoldSampleT rs m) v a)
-foldOpto ro x0 o = fmap shuffle
-                 . runFoldSampleT (runOptoSample ro x0 o)
-  where
-    shuffle (Nothing, rs)       = (x0, rs, o )
-    shuffle (Just (x', o'), rs) = (x', rs, o')
-    {-# INLINE shuffle #-}
-{-# INLINE foldOpto #-}
+---- | 'runOptoSample' specialized for 'FoldSampleT': give it a collection of
+---- items @rs@, and it will process each item @r@.  Returns the optimized
+---- @a@, the leftover @rs@, and a closure 'OptoM' that can be resumed.
+--foldOpto
+--    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
+--    => RunOpts (FoldSampleT rs m) a
+--    -> a
+--    -> OptoM (FoldSampleT rs m) v a
+--    -> rs
+--    -> m (a, rs, OptoM (FoldSampleT rs m) v a)
+--foldOpto ro x0 o = fmap shuffle
+--                 . runFoldSampleT (runOptoSample ro x0 o)
+--  where
+--    shuffle (Nothing, rs)       = (x0, rs, o )
+--    shuffle (Just (x', o'), rs) = (x', rs, o')
+--    {-# INLINE shuffle #-}
+--{-# INLINE foldOpto #-}
 
--- | 'evalOptoSample' specialized for 'FoldSampleT'.  Basically 'foldOpto',
--- without returning the resumable closure.
-foldOpto_
-    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
-    => RunOpts (FoldSampleT rs m) a
-    -> a
-    -> OptoM (FoldSampleT rs m) v a
-    -> rs
-    -> m (a, rs)
-foldOpto_ ro x0 o = (fmap . first) (fromMaybe x0)
-                  . runFoldSampleT (evalOptoSample ro x0 o)
-{-# INLINE foldOpto_ #-}
+---- | 'evalOptoSample' specialized for 'FoldSampleT'.  Basically 'foldOpto',
+---- without returning the resumable closure.
+--foldOpto_
+--    :: (Monad m, O.IsSequence rs, O.Index rs ~ Int)
+--    => RunOpts (FoldSampleT rs m) a
+--    -> a
+--    -> OptoM (FoldSampleT rs m) v a
+--    -> rs
+--    -> m (a, rs)
+--foldOpto_ ro x0 o = (fmap . first) (fromMaybe x0)
+--                  . runFoldSampleT (evalOptoSample ro x0 o)
+--{-# INLINE foldOpto_ #-}
 
--- | 'runOptoSample' specialized for 'RefSample': give it a mutable
--- reference @vrs@ to a collection of items @rs@, and it will process each
--- item @r@ while emptying out the mutable reference.
---
--- It will terminate and return a result as soon as the reference is empty.
--- You can add more items to the mutable reference as it is being
--- processed, and it will process it as long as it hasn't yet completed.
---
--- Returns the optimized @a@, and a closure 'OptoM' that can be resumed.
-refOpto
-    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
-    => RunOpts (RefSample vrs r m) a
-    -> a
-    -> OptoM (RefSample vrs r m) va a
-    -> vrs
-    -> m (a, OptoM (RefSample vrs r m) va a)
-refOpto ro x0 o = fmap (fromMaybe (x0, o))
-                . runRefSample (runOptoSample ro x0 o)
-{-# INLINE refOpto #-}
+---- | 'runOptoSample' specialized for 'RefSample': give it a mutable
+---- reference @vrs@ to a collection of items @rs@, and it will process each
+---- item @r@ while emptying out the mutable reference.
+----
+---- It will terminate and return a result as soon as the reference is empty.
+---- You can add more items to the mutable reference as it is being
+---- processed, and it will process it as long as it hasn't yet completed.
+----
+---- Returns the optimized @a@, and a closure 'OptoM' that can be resumed.
+--refOpto
+--    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
+--    => RunOpts (RefSample vrs r m) a
+--    -> a
+--    -> OptoM (RefSample vrs r m) va a
+--    -> vrs
+--    -> m (a, OptoM (RefSample vrs r m) va a)
+--refOpto ro x0 o = fmap (fromMaybe (x0, o))
+--                . runRefSample (runOptoSample ro x0 o)
+--{-# INLINE refOpto #-}
 
-refOpto_
-    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
-    => RunOpts (RefSample vrs r m) a
-    -> a
-    -> OptoM (RefSample vrs r m) va a
-    -> vrs
-    -> m a
-refOpto_ ro x0 o = fmap (fromMaybe x0)
-                 . runRefSample (evalOptoSample ro x0 o)
-{-# INLINE refOpto_ #-}
+--refOpto_
+--    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
+--    => RunOpts (RefSample vrs r m) a
+--    -> a
+--    -> OptoM (RefSample vrs r m) va a
+--    -> vrs
+--    -> m a
+--refOpto_ ro x0 o = fmap (fromMaybe x0)
+--                 . runRefSample (evalOptoSample ro x0 o)
+--{-# INLINE refOpto_ #-}
 
 
 

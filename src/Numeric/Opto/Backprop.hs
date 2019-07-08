@@ -25,12 +25,12 @@ import           Numeric.Opto.Core
 bpGrad
     :: (Monad m, Backprop a, Backprop b)
     => (forall s. Reifies s W => BVar s a -> BVar s b)
-    -> Grad m a
-bpGrad f = pureGrad $ gradBP f
+    -> Grad m r a
+bpGrad f = pureNonSampling $ gradBP f
 
 -- | Turn a @a -> b@ function parameterized on @r@ into a @'Grad' m a@.
 bpGradSample
     :: (Backprop a, Backprop b, MonadSample r m)
     => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b)
-    -> Grad m a
-bpGradSample f = pureSampling $ \r -> gradBP (f (constVar r))
+    -> Grad m r a
+bpGradSample f = pureGrad $ \r -> gradBP (f (constVar r))
