@@ -9,20 +9,6 @@
 @package opto
 @version 0.1.0.0
 
-module Data.Type.ZipProd
-data ZipProd :: (Type -> Type -> Type) -> [Type] -> [Type] -> Type
-[ZPØ] :: ZipProd f '[] '[]
-[:<<] :: f a b -> ZipProd f as bs -> ZipProd f (a : as) (b : bs)
-infixr 5 :<<
-onlyZP :: f a b -> ZipProd f '[a] '[b]
-headZP :: ZipProd f (a : as) (b : bs) -> f a b
-tailZP :: ZipProd f (a : as) (b : bs) -> ZipProd f as bs
-traverseZP :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x y)) -> ZipProd f as bs -> h (ZipProd g as bs)
-traverseZP_ :: forall h f as bs. Applicative h => (forall x y. f x y -> h ()) -> ZipProd f as bs -> h ()
-mapZP :: (forall x y. f x y -> g x y) -> ZipProd f as bs -> ZipProd g as bs
-traverseZP1 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g x)) -> ZipProd f as bs -> h (Rec g as)
-traverseZP2 :: forall h f g as bs. Applicative h => (forall x y. f x y -> h (g y)) -> ZipProd f as bs -> h (Rec g bs)
-
 
 -- | Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref
@@ -34,7 +20,7 @@ module Numeric.Opto.Ref
 --   
 --   This allows us to reat mutable vectors and in-place mutable numbers or
 --   records in the same way.
-class Ref m a v | v -> a
+class Monad m => Ref m a v | v -> a
 
 -- | Initialize a mutable reference with a given value
 thawRef :: Ref m a v => a -> m v
@@ -49,61 +35,24 @@ copyRef :: Ref m a v => v -> a -> m ()
 --   mutable reference.
 modifyRef :: Ref m a v => v -> (a -> a) -> m ()
 
--- | Apply a pure function on an immutable value onto a value stored in a
---   mutable reference.
-modifyRef :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
-
 -- | <a>modifyRef</a>, but forces the result before storing it back in the
 --   reference.
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
-
--- | <a>modifyRef</a>, but forces the result before storing it back in the
---   reference.
-modifyRef' :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
 
 -- | Apply a pure function on an immutable value onto a value stored in a
 --   mutable reference, returning a result value from that function.
 updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
 
--- | Apply a pure function on an immutable value onto a value stored in a
---   mutable reference, returning a result value from that function.
-updateRef :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
-
 -- | <a>updateRef</a>, but forces the updated value before storing it back
 --   in the reference.
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
-
--- | <a>updateRef</a>, but forces the updated value before storing it back
---   in the reference.
-updateRef' :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
-
--- | <tt><a>RefVal</a> m a v</tt> is a wrapper over a pure value <tt>a</tt>
---   that can be stored in a mutable reference <tt>v</tt>.
-data RefVal :: (Type -> Type) -> Type -> Type -> Type
-[RVl] :: Ref m a v => a -> RefVal m a v
-
--- | <tt><a>RefVar</a> m a v</tt> is a wrapper over a mutable reference
---   <tt>v</tt> that contains a value <tt>a</tt>.
-data RefVar :: (Type -> Type) -> Type -> Type -> Type
-[RVr] :: Ref m a v => v -> RefVar m a v
-
--- | Store multiple <a>RefVal</a>s
-type RefVals m = ZipProd (RefVal m)
-
--- | Store multiple <a>RefVar</a>s
-type RefVars m = ZipProd (RefVar m)
-
--- | <a>thawRef</a>, but over a collection <a>RefVals</a>.
-thawRefs :: Applicative m => RefVals m as vs -> m (RefVars m as vs)
-
--- | <a>freezeRef</a>, but over a collection <a>RefVars</a>.
-freezeRefs :: Applicative m => RefVars m as vs -> m (Rec Identity as)
-
--- | A version of <a>freezeRefs</a> that returns <a>RefVals</a>.
-pullRefs :: Applicative m => RefVars m as vs -> m (RefVals m as vs)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
 instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v Data.Type.Equality.~ mv, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
+instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m () ()
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m a u, Numeric.Opto.Ref.Ref m b v) => Numeric.Opto.Ref.Ref m (a, b) (u, v)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m a u, Numeric.Opto.Ref.Ref m b v, Numeric.Opto.Ref.Ref m c w) => Numeric.Opto.Ref.Ref m (a, b, c) (u, v, w)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m a u, Numeric.Opto.Ref.Ref m b v, Numeric.Opto.Ref.Ref m c w, Numeric.Opto.Ref.Ref m d j) => Numeric.Opto.Ref.Ref m (a, b, c, d) (u, v, w, j)
 
 
 -- | Conduits that are useful for sampling and running optimizers.
@@ -133,7 +82,7 @@ sinkSampleReservoir :: forall m v a o. (PrimMonad m, Vector v a) => Int -> Gen (
 --   Is O(N) memory.
 --   
 --   NOTE: Exhausts the entire input stream first before outputting
---   anything, but never keeps the entire stream in memory.
+--   anything, but never keeps the entire original stream in memory.
 samplingN :: PrimMonad m => Int -> Gen (PrimState m) -> ConduitT a a m ()
 
 -- | Drops and lets items through randomly with a given probability.
@@ -201,7 +150,7 @@ gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 class (Ref m a v, Additive a) => AdditiveInPlace m v a
 (.+.=) :: AdditiveInPlace m v a => v -> a -> m ()
 infix 4 .+.=
-sumAdditiveInPlace :: (Monad m, AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
+sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a
 (.*=) :: ScalingInPlace m v c a => v -> c -> m ()
 (.*+=) :: ScalingInPlace m v c a => v -> (c, a) -> m ()
@@ -252,7 +201,7 @@ module Numeric.Opto.Core
 type Diff a = a
 type Grad m r a = r -> a -> m (Diff a)
 data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type
-[MkOpto] :: ScalingInPlace m v c a => {oInit :: !RefVals m ss sVars, oUpdate :: !RefVars m ss sVars -> r -> a -> m (c, Diff a)} -> Opto m v r a
+[MkOpto] :: forall s u m v r a c. (ScalingInPlace m v c a, Ref m s u) => {oInit :: !s, oUpdate :: !u -> r -> a -> m (c, Diff a)} -> Opto m v r a
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> m (c, Diff a, s)) -> Opto m v r a
 fromStateless :: ScalingInPlace m v c a => (r -> a -> m (c, Diff a)) -> Opto m v r a
 pureGrad :: Applicative m => (r -> a -> Diff a) -> Grad m r a
@@ -305,7 +254,7 @@ foldOpto_ :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts (StateT rs m) a
 instance GHC.Base.Applicative m => Data.Default.Class.Default (Numeric.Opto.Run.RunOpts m a)
 
 module Numeric.Opto.Optimizer
-steepestDescent :: (ScalingInPlace m v c a, Applicative m) => c -> Grad m r a -> Opto m v r a
+steepestDescent :: ScalingInPlace m v c a => c -> Grad m r a -> Opto m v r a
 newtype Momentum c
 Momentum :: c -> Momentum c
 [momentumDecay] :: Momentum c -> c
@@ -363,7 +312,7 @@ module Numeric.Opto
 --   
 --   This allows us to reat mutable vectors and in-place mutable numbers or
 --   records in the same way.
-class Ref m a v | v -> a
+class Monad m => Ref m a v | v -> a
 
 -- | Initialize a mutable reference with a given value
 thawRef :: Ref m a v => a -> m v
@@ -378,30 +327,14 @@ copyRef :: Ref m a v => v -> a -> m ()
 --   mutable reference.
 modifyRef :: Ref m a v => v -> (a -> a) -> m ()
 
--- | Apply a pure function on an immutable value onto a value stored in a
---   mutable reference.
-modifyRef :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
-
 -- | <a>modifyRef</a>, but forces the result before storing it back in the
 --   reference.
 modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
-
--- | <a>modifyRef</a>, but forces the result before storing it back in the
---   reference.
-modifyRef' :: (Ref m a v, Functor m) => v -> (a -> a) -> m ()
 
 -- | Apply a pure function on an immutable value onto a value stored in a
 --   mutable reference, returning a result value from that function.
 updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
 
--- | Apply a pure function on an immutable value onto a value stored in a
---   mutable reference, returning a result value from that function.
-updateRef :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
-
 -- | <a>updateRef</a>, but forces the updated value before storing it back
 --   in the reference.
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
-
--- | <a>updateRef</a>, but forces the updated value before storing it back
---   in the reference.
-updateRef' :: (Ref m a v, Monad m) => v -> (a -> (a, b)) -> m b
