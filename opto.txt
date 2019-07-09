@@ -301,7 +301,7 @@ bpGrad :: (Monad m, Backprop a, Backprop b) => (forall s. Reifies s W => BVar s 
 
 -- | Turn a <tt>a -&gt; b</tt> function parameterized on <tt>r</tt> into a
 --   <tt><a>Grad</a> m a</tt>.
-bpGradSample :: (Backprop a, Backprop b, Applicative m) => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b) -> Grad m r a
+bpGradSample :: (Backprop a, Backprop b, Applicative m) => (forall s. Reifies s W => r -> BVar s a -> BVar s b) -> Grad m r a
 
 module Numeric.Opto
 
