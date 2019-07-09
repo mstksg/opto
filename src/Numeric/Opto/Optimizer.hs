@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo       #-}
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -17,10 +18,7 @@ module Numeric.Opto.Optimizer (
   ) where
 
 import           Control.Monad.Primitive
-import           Control.Monad.Trans.Class
-import           Control.Monad.Trans.Maybe
 import           Data.Default
-import           Data.Maybe
 import           Data.Primitive.MutVar
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
@@ -31,7 +29,9 @@ steepestDescent
     => c                          -- ^ learning rate
     -> Grad m r a                 -- ^ gradient
     -> Opto m v r a
-steepestDescent lr gr = fromStateless $ \r -> fmap (-lr,) . gr r
+steepestDescent lr gr = fromStateless $ \r x -> do
+    !g <- gr r x
+    pure (-lr, g)
 
 newtype Momentum c = Momentum
     { momentumDecay :: c
@@ -48,8 +48,8 @@ momentum
     -> Grad m r a        -- ^ gradient
     -> Opto m v r a
 momentum Momentum{..} lr gr = fromCopying (addZero @a) $ \r x v -> do
-    g <- gr r x
-    let v' = (momentumDecay .* v) .+. (lr .* g)
+    !g <- gr r x
+    let !v' = (momentumDecay .* v) .+. (lr .* g)
     pure (-1, v', v')
 
 newtype Nesterov c = Nesterov
@@ -67,9 +67,9 @@ nesterov
     -> Grad m r a       -- ^ gradient
     -> Opto m v r a
 nesterov Nesterov{..} lr gr = fromCopying (addZero @a) $ \r x v -> do
-    let vDecay = nesterovDecay .* v
-    g <- gr r (x .+. ((-1) .* vDecay))
-    let v' = vDecay .+. (lr .* g)
+    let !vDecay = nesterovDecay .* v
+    !g <- gr r (x .+. ((-1) .* vDecay))
+    let !v' = vDecay .+. (lr .* g)
     pure (-1, v', v')
 
 data Adam c = Adam
@@ -102,18 +102,17 @@ adam Adam{..} gr = MkOpto
     , oUpdate = \( rT :: MutVar (PrimState m) c
                  , rM :: v
                  , rV :: v
-                 ) r x -> fmap fromJust . runMaybeT $ do
-        lift $ do
-          rM .*= adamDecay1
-          rV .*= adamDecay2
-          g <- gr r x
-          rM .*+= (1 - adamDecay1, g)
-          rV .*+= (1 - adamDecay2, g * g)
-        (m, v) <- lift $ freezeRef (rM, rV)
-        t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
+                 ) r x -> do
+        rM .*= adamDecay1
+        rV .*= adamDecay2
+        !g <- gr r x
+        rM .*+= (1 - adamDecay1, g)
+        rV .*+= (1 - adamDecay2, g * g)
+        (!m, !v) <- freezeRef (rM, rV)
+        !t       <- updateRef' rT $ \t0 -> let !t1 = t0 + 1
                                            in  (t1, t1)
-        let mHat = recip (1 - adamDecay1 ** t) .* m
-            vHat = recip (1 - adamDecay2 ** t) .* v
+        let !mHat = recip (1 - adamDecay1 ** t) .* m
+            !vHat = recip (1 - adamDecay2 ** t) .* v
         return ( -adamStep
                , mHat / (sqrt vHat + realToFrac adamEpsilon)
                )
@@ -149,19 +148,18 @@ adaMax AdaMax{..} gr = MkOpto
     , oUpdate = \( rT :: MutVar (PrimState m) c
                  , rM :: v
                  , rU :: MutVar (PrimState m) c
-                 ) r x -> fmap fromJust . runMaybeT $ do
-        lift $ do
-          rM .*= adaMaxDecay1
-          g <- gr r x
-          rM .*+= (1 - adaMaxDecay1, g)
-          t <- updateRef' rT $ \t0 ->
-              let t1 = t0 + 1
-              in  (t1, t1)
-          m <- freezeRef rM
-          u <- updateRef' rU $ \u0 ->
-              let u1 = max (adaMaxDecay2 * u0) (norm_inf g)
-              in  (u1, u1)
-          return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
-                 , m
-                 )
+                 ) r x -> do
+        rM .*= adaMaxDecay1
+        !g <- gr r x
+        rM .*+= (1 - adaMaxDecay1, g)
+        !t <- updateRef' rT $ \t0 ->
+            let !t1 = t0 + 1
+            in  (t1, t1)
+        !m <- freezeRef rM
+        !u <- updateRef' rU $ \u0 ->
+            let !u1 = max (adaMaxDecay2 * u0) (norm_inf g)
+            in  (u1, u1)
+        return ( -adaMaxStep / ((1 - adaMaxDecay1 ** t) * u)
+               , m
+               )
     }
