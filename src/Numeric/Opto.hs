@@ -3,7 +3,6 @@ module Numeric.Opto (
   , Ref(..)
   ) where
 
-import           Control.Monad.Sample     as Opto
 import           Numeric.Opto.Core        as Opto
 import           Numeric.Opto.Optimizer   as Opto
 import           Numeric.Opto.Ref

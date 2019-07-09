@@ -21,35 +21,27 @@ module Numeric.Opto.Run (
   -- * Options
     RunOpts(..)
   , ParallelOpts(..)
-  -- -- * Sampling
-  -- , runOptoSample
-  -- , evalOptoSample
-  -- -- ** Specific Sampling Monads
-  -- , optoConduit, optoConduit_
-  -- , refOpto, refOpto_
-  -- , foldOpto, foldOpto_
-  -- -- * Non-Sampling
-  -- , runOpto
-  -- , evalOpto
-  -- , evalOpto, runOpto
-  -- , evalOptoAlt, runOptoAlt
+  -- * Run
+  , runOpto, evalOpto
+  , runOptoNonSampling, evalOptoNonSampling
+  , optoConduit, optoConduit_
+  , foldOpto, foldOpto_
   -- -- * Parallel
   -- , evalOptoParallel
   -- , runOptoParallel
   ) where
 
--- import           Control.Monad.IO.Unlift
+-- import           Control.Monad.Sample
 -- import           Data.Functor
 -- import           UnliftIO.Async
--- import           UnliftIO.Concurrent
 -- import           UnliftIO.IORef
 import           Control.Applicative
 import           Control.Monad
-import           Control.Monad.Sample
+-- import           Control.Monad.IO.Unlift
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State.Strict
-import           Data.Bifunctor
+-- import           Data.Bifunctor
 import           Data.Conduit
 import           Data.Default
 import           Data.Maybe
@@ -57,6 +49,7 @@ import           Data.MonoTraversable
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
+-- import           UnliftIO.Concurrent
 import qualified Data.Conduit                     as C
 import qualified Data.Sequences                   as O
 
@@ -287,40 +280,6 @@ sampleState
 sampleState = state $ \xs -> case O.uncons xs of
   Nothing      -> (Nothing, mempty)
   Just (y, ys) -> (Just y , ys    )
-
-
----- | 'runOptoSample' specialized for 'RefSample': give it a mutable
----- reference @vrs@ to a collection of items @rs@, and it will process each
----- item @r@ while emptying out the mutable reference.
-----
----- It will terminate and return a result as soon as the reference is empty.
----- You can add more items to the mutable reference as it is being
----- processed, and it will process it as long as it hasn't yet completed.
-----
----- Returns the optimized @a@, and a closure 'Opto' that can be resumed.
---refOpto
---    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
---    => RunOpts (RefSample vrs r m) a
---    -> a
---    -> Opto (RefSample vrs r m) va a
---    -> vrs
---    -> m (a, Opto (RefSample vrs r m) va a)
---refOpto ro x0 o = fmap (fromMaybe (x0, o))
---                . runRefSample (runOptoSample ro x0 o)
---{-# INLINE refOpto #-}
-
---refOpto_
---    :: (Monad m, Ref m rs vrs, Element rs ~ r, O.IsSequence rs, O.Index rs ~ Int)
---    => RunOpts (RefSample vrs r m) a
---    -> a
---    -> Opto (RefSample vrs r m) va a
---    -> vrs
---    -> m a
---refOpto_ ro x0 o = fmap (fromMaybe x0)
---                 . runRefSample (evalOptoSample ro x0 o)
---{-# INLINE refOpto_ #-}
-
-
 
 
 -- mean :: (Foldable t, Fractional a) => t a -> a

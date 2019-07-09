@@ -15,15 +15,13 @@
 {-# LANGUAGE ViewPatterns               #-}
 
 module Numeric.Opto.Core (
-    Diff, Grad, Opto(..), Opto
+    Diff, Grad, Opto(..)
   , fromCopying, fromStateless
   , pureGrad
   , nonSampling, pureNonSampling
   ) where
 
 import           Control.Monad.Primitive
-import           Control.Monad.ST
-import           Control.Monad.Sample
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Type.ZipProd

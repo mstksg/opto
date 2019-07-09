@@ -12,16 +12,6 @@
 --
 -- Conduits that are useful for sampling and running optimizers.
 module Numeric.Opto.Run.Conduit (
-  -- -- * Running 'Opto's
-  -- -- ** Single threaded
-  --   RunOpts(..)
-  -- , runOptoConduit
-  -- , runOptoConduit_
-  -- , runOptoConduitChunk
-  -- , runOptoConduitChunk_
-  -- -- ** Parallel
-  -- , ParallelOpts(..)
-
   -- * Sampling conduits
     shuffling
   , shufflingN
@@ -32,42 +22,17 @@ module Numeric.Opto.Run.Conduit (
 
 import           Control.Monad
 import           Control.Monad.Primitive
-import           Control.Monad.Sample
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Maybe
 import           Data.Conduit
+import           Data.Foldable
 import           Data.Maybe
 import qualified Data.Conduit.Combinators           as C
 import qualified Data.Vector                        as V
 import qualified Data.Vector.Generic                as VG
+import qualified Data.Vector.Generic.Mutable        as VG
 import qualified System.Random.MWC                  as MWC
 import qualified System.Random.MWC.Distributions    as MWC
-
----- | With 'RunOpts', a chunk size, an initial input, and a /sampling/
----- optimizer, give a conduit that processes upstream samples and outputs
----- the updated value only /after/ the optimizer finishes.
-----
----- Returns the updated optimizer state.
---runOptoParallelConduitChunk
---    :: MonadUnliftIO m
---    => RunOpts (SampleConduit r a m) a
---    -> ParallelOpts
---    -> a
---    -> OptoM (SampleConduit r a m) v a
---    -> ConduitT r a m (OptoM (SampleConduit r a m) v a)
---runOptoParallelConduitChunk ro po x0 o0 = do
---    tq <- lift newTQueueIO
---    replicateM_ 100 $ do
---      x <- await
---      mapM_ (lift . atomically . writeTQueue tq) x
---    undefined
---    -- forkIO $ _
---    -- _
-
-    -- (x, o) <- fmap (fromMaybe (x0, o0))
-    --         . runSampleConduit
-    --         $ runOptoMany ro x0 o0
-    -- yield x
-    -- return o
-
 
 -- | Outputs a shuffled version of the input stream.  Keeps entire input
 -- stream in memory.
@@ -99,23 +64,23 @@ shufflingN n g = do
 
 -- | Process an entire stream, and keep N random and shuffled items from
 -- that stream.  Is O(N) memory.
---
--- Returns the entire stream shuffled if the stream has less than
--- N elements.
 sinkSampleReservoir
     :: forall m v a o. (PrimMonad m, VG.Vector v a)
     => Int
     -> MWC.Gen (PrimState m)
     -> ConduitT a o m (v a)
-sinkSampleReservoir k = fmap (fromMaybe VG.empty)
-                      . runConduitSample
-                      . sampleReservoir k
+sinkSampleReservoir k g = do
+    xs <- VG.thaw . VG.fromList . catMaybes =<< replicateM k await
+    void . runMaybeT . for_ [k+1 ..] $ \i -> do
+      x <- MaybeT await
+      lift . lift $ do
+        j <- MWC.uniformR (1, i) g
+        when (j <= k) $
+          VG.unsafeWrite xs (j - 1) x
+    lift $ VG.freeze xs
 
 -- | Process an entire stream, and yield N random items from that stream.
 -- Is O(N) memory.
---
--- Yields the entire input stream shuffled if the stream has less than
--- N elements.
 --
 -- NOTE: Exhausts the entire input stream first before outputting anything,
 -- but never keeps the entire stream in memory.

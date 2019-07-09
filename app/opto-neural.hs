@@ -131,7 +131,7 @@ main = MWC.withSystemRandom $ \g -> do
                           >> C.yieldMany train .| shuffling g
                       )
        .| C.iterM (modify . (:))      -- add to state stack for train eval
-       .| optoConduit_ def net0 (adam @_ @(MutVar _ Net) def (pureSampling gr))
+       .| optoConduit_ def net0 (adam @_ @(MutVar _ Net) def (pureGrad gr))
        .| mapM_ (report 2500) [0..]
        .| C.map T.pack
        .| C.encodeUtf8
