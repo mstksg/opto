@@ -1,5 +1,7 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -34,6 +36,7 @@ import           Numeric.Backprop
 import           Numeric.LinearAlgebra.Static.Backprop
 import           Numeric.OneLiner
 import           Numeric.Opto hiding                   ((<.>))
+import           Numeric.Opto.Backprop
 import           System.Environment
 import           System.FilePath hiding                ((<.>))
 import           Text.Printf
@@ -50,6 +53,7 @@ data Net = N { _weights1 :: !(L 250 784)
              , _bias2    :: !(R 10)
              }
   deriving (Generic)
+  deriving (Num, Fractional, Floating) via (GNum Net)
 makeLenses ''Net
 
 instance Additive Net
@@ -131,13 +135,14 @@ main = MWC.withSystemRandom $ \g -> do
                           >> C.yieldMany train .| shuffling g
                       )
        .| C.iterM (modify . (:))      -- add to state stack for train eval
-       .| optoConduit_ def net0 (adam @_ @(MutVar _ Net) def (pureGrad gr))
+       .| optoConduit_ def net0
+            (adam @_ @(MutVar _ Net) def
+               (bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y))
+            )
        .| mapM_ (report 2500) [0..]
        .| C.map T.pack
        .| C.encodeUtf8
        .| C.stdout
-  where
-    gr (x, y) = gradBP (netErr (constVar x) (constVar y))
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
@@ -160,36 +165,6 @@ loadMNIST fpI fpL = runMaybeT $ do
   where
     mkImage = H.create . VG.convert . VG.map (\i -> fromIntegral i / 255)
     mkLabel n = H.create $ HM.build 10 (\i -> if round i == n then 1 else 0)
-
-instance Num Net where
-    (+)         = gPlus
-    (-)         = gMinus
-    (*)         = gTimes
-    negate      = gNegate
-    abs         = gAbs
-    signum      = gSignum
-    fromInteger = gFromInteger
-
-instance Fractional Net where
-    (/)          = gDivide
-    recip        = gRecip
-    fromRational = gFromRational
-
-instance Floating Net where
-    pi = gPi
-    sqrt = gSqrt
-    exp = gExp
-    log = gLog
-    sin = gSin
-    cos = gCos
-    asin = gAsin
-    acos = gAcos
-    atan = gAtan
-    sinh = gSinh
-    cosh = gCosh
-    asinh = gAsinh
-    acosh = gAcosh
-    atanh = gAtanh
 
 instance KnownNat n => MWC.Variate (R n) where
     uniform g = H.randomVector <$> MWC.uniform g <*> pure H.Uniform

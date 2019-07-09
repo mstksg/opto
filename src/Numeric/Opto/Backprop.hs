@@ -30,6 +30,6 @@ bpGrad f = pureNonSampling $ gradBP f
 -- | Turn a @a -> b@ function parameterized on @r@ into a @'Grad' m a@.
 bpGradSample
     :: (Backprop a, Backprop b, Applicative m)
-    => (forall s. Reifies s W => BVar s r -> BVar s a -> BVar s b)
+    => (forall s. Reifies s W => r -> BVar s a -> BVar s b)
     -> Grad m r a
-bpGradSample f = pureGrad $ \r -> gradBP (f (constVar r))
+bpGradSample f = pureGrad $ \r -> gradBP (f r)
