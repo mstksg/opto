@@ -41,14 +41,9 @@ library:
   source-dirs: src
   dependencies:
   - finite-typelits
-  - mtl
-  - one-liner
-  - unliftio
-  - unliftio-core
-  - vector-sized >= 1.0
-  - vinyl
-  - containers
   - mono-traversable
+  - one-liner
+  - vector-sized >= 1.0
 
 executables:
   opto-neural:

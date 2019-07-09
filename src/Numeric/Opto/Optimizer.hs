@@ -20,17 +20,14 @@ import           Control.Monad.Primitive
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Default
-import           Data.Functor.Identity
 import           Data.Maybe
 import           Data.Primitive.MutVar
-import           Data.Type.ZipProd
-import           Data.Vinyl.Core
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
 steepestDescent
-    :: (ScalingInPlace m v c a, Applicative m)
+    :: ScalingInPlace m v c a
     => c                          -- ^ learning rate
     -> Grad m r a                 -- ^ gradient
     -> Opto m v r a
@@ -101,19 +98,18 @@ adam
     -> Grad m r a           -- ^ gradient
     -> Opto m v r a
 adam Adam{..} gr = MkOpto
-    { oInit   = RVl 1 :<< RVl addZero :<< RVl addZero :<< ZPØ
-             :: ZipProd (RefVal m)
-                        '[c                     ,a,a]
-                        '[MutVar (PrimState m) c,v,v]
-    , oUpdate = \rSs r x -> fmap fromJust . runMaybeT $ do
-        RVr rT :<< RVr rM :<< RVr rV :<< ZPØ <- return rSs
+    { oInit   = (1, addZero, addZero) :: (c, a, a)
+    , oUpdate = \( rT :: MutVar (PrimState m) c
+                 , rM :: v
+                 , rV :: v
+                 ) r x -> fmap fromJust . runMaybeT $ do
         lift $ do
           rM .*= adamDecay1
           rV .*= adamDecay2
           g <- gr r x
           rM .*+= (1 - adamDecay1, g)
           rV .*+= (1 - adamDecay2, g * g)
-        Identity m :& Identity v :& RNil <- lift $ freezeRefs (tailZP rSs)
+        (m, v) <- lift $ freezeRef (rM, rV)
         t <- lift $ updateRef' rT $ \t0 -> let t1 = t0 + 1
                                            in  (t1, t1)
         let mHat = recip (1 - adamDecay1 ** t) .* m
@@ -149,12 +145,11 @@ adaMax
     -> Grad m r a           -- ^ gradient
     -> Opto m v r a
 adaMax AdaMax{..} gr = MkOpto
-    { oInit   = RVl 1 :<< RVl addZero :<< RVl 0 :<< ZPØ
-             :: ZipProd (RefVal m)
-                        '[c,a,c]
-                        '[MutVar (PrimState m) c, v, MutVar (PrimState m) c]
-    , oUpdate = \rSs r x -> fmap fromJust . runMaybeT $ do
-        RVr rT :<< RVr rM :<< RVr rU :<< ZPØ <- return rSs
+    { oInit   = (1, addZero, 0) :: (c, a, c)
+    , oUpdate = \( rT :: MutVar (PrimState m) c
+                 , rM :: v
+                 , rU :: MutVar (PrimState m) c
+                 ) r x -> fmap fromJust . runMaybeT $ do
         lift $ do
           rM .*= adaMaxDecay1
           g <- gr r x

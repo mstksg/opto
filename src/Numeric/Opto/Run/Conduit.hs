@@ -83,7 +83,7 @@ sinkSampleReservoir k g = do
 -- Is O(N) memory.
 --
 -- NOTE: Exhausts the entire input stream first before outputting anything,
--- but never keeps the entire stream in memory.
+-- but never keeps the entire original stream in memory.
 samplingN
     :: PrimMonad m
     => Int

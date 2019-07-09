@@ -119,7 +119,7 @@ class (Ref m a v, Additive a) => AdditiveInPlace m v a where
     (.+.=) :: v -> a -> m ()
     r .+.= x = modifyRef' r (.+. x)
 
-sumAdditiveInPlace :: (Monad m, AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
+sumAdditiveInPlace :: (AdditiveInPlace m v a, Foldable t) => v -> t a -> m ()
 sumAdditiveInPlace v = mapM_ (v .+.=)
 
 class (AdditiveInPlace m v a, Scaling c a) => ScalingInPlace m v c a where

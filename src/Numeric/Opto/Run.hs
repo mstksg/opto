@@ -163,8 +163,8 @@ runOpto_
     -> (m a -> m (Opto m v r a) -> m q)
     -> m q
 runOpto_ RO{..} sampler x0 MkOpto{..} f = do
-    rSs <- thawRefs oInit
-    rX  <- thawRef @_ @a @v x0
+    rS <- thawRef oInit
+    rX <- thawRef @_ @a @v x0
     optoLoop OL
       { olLimit       = roLimit
       , olBatch       = roBatch
@@ -174,11 +174,11 @@ runOpto_ RO{..} sampler x0 MkOpto{..} f = do
       , olRead        = freezeRef
       , olVar         = rX
       , olSample      = sampler
-      , olUpdateState = oUpdate rSs
+      , olUpdateState = oUpdate rS
       , olStopCond    = roStopCond
       , olReportAct   = roReport
       }
-    f (freezeRef rX) (flip MkOpto oUpdate <$> pullRefs rSs)
+    f (freezeRef rX) (flip MkOpto oUpdate <$> freezeRef rS)
 {-# INLINE runOpto_ #-}
 
 data OptoLoop m v r a c = OL

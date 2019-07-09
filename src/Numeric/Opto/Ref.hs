@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns           #-}
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -19,17 +20,10 @@
 -- Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref (
     Ref(..)
-  , RefVal(..), RefVar(..), RefVals, RefVars
-  , thawRefs, freezeRefs, pullRefs
   ) where
 
 import           Control.Monad.Primitive
-import           Data.Functor
-import           Data.Functor.Identity
-import           Data.Kind
 import           Data.Primitive.MutVar
-import           Data.Type.ZipProd
-import           Data.Vinyl.Core
 import qualified Data.Vector               as V
 import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
@@ -41,7 +35,7 @@ import qualified Data.Vector.Mutable       as MV
 --
 -- This allows us to reat mutable vectors and in-place mutable numbers or
 -- records in the same way.
-class Ref m a v | v -> a where
+class Monad m => Ref m a v | v -> a where
     -- | Initialize a mutable reference with a given value
     thawRef      :: a -> m v
     -- | Read an immutable value back from a mutable reference
@@ -53,17 +47,16 @@ class Ref m a v | v -> a where
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference.
     modifyRef  :: v -> (a -> a) -> m ()
-    default modifyRef :: Functor m => v -> (a -> a) -> m ()
-    modifyRef v f = void $ updateRef v ((,()) . f)
+    modifyRef v f = copyRef v . f =<< freezeRef v
     -- | 'modifyRef', but forces the result before storing it back in the
     -- reference.
     modifyRef' :: v -> (a -> a) -> m ()
-    default modifyRef' :: Functor m => v -> (a -> a) -> m ()
-    modifyRef' v f = void $ updateRef' v ((,()) . f)
+    modifyRef' v f = do
+      x <- f <$> freezeRef v
+      x `seq` copyRef v x
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference, returning a result value from that function.
     updateRef  :: v -> (a -> (a, b)) -> m b
-    default updateRef :: Monad m => v -> (a -> (a, b)) -> m b
     updateRef v f = do
         (x, y) <- f <$> freezeRef v
         copyRef v x
@@ -71,40 +64,11 @@ class Ref m a v | v -> a where
     -- | 'updateRef', but forces the updated value before storing it back in the
     -- reference.
     updateRef' :: v -> (a -> (a, b)) -> m b
-    default updateRef' :: Monad m => v -> (a -> (a, b)) -> m b
     updateRef' v f = do
         (x, y) <- f <$> freezeRef v
         x `seq` copyRef v x
         return y
     {-# MINIMAL thawRef, (copyRef | updateRef, updateRef') #-}
-
--- | @'RefVal' m a v@ is a wrapper over a pure value @a@ that can be
--- stored in a mutable reference @v@.
-data RefVal :: (Type -> Type) -> Type -> Type -> Type where
-    RVl :: Ref m a v => a -> RefVal m a v
-
--- | @'RefVar' m a v@ is a wrapper over a mutable reference @v@ that
--- contains a value @a@.
-data RefVar :: (Type -> Type) -> Type -> Type -> Type where
-    RVr :: Ref m a v => v -> RefVar m a v
-
--- | Store multiple 'RefVal's
-type RefVals m = ZipProd (RefVal m)
-
--- | Store multiple 'RefVar's
-type RefVars m = ZipProd (RefVar  m)
-
--- | 'thawRef', but over a collection 'RefVals'.
-thawRefs :: Applicative m => RefVals m as vs -> m (RefVars m as vs)
-thawRefs = traverseZP $ \(RVl i) -> RVr <$> thawRef i
-
--- | 'freezeRef', but over a collection 'RefVars'.
-freezeRefs :: Applicative m => RefVars m as vs -> m (Rec Identity as)
-freezeRefs = traverseZP1 $ \(RVr v) -> Identity <$> freezeRef v
-
--- | A version of 'freezeRefs' that returns 'RefVals'.
-pullRefs :: Applicative m => RefVars m as vs -> m (RefVals m as vs)
-pullRefs = traverseZP $ \(RVr v) -> RVl <$> freezeRef v
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
     thawRef    = newMutVar
@@ -149,3 +113,24 @@ instance (PrimMonad m, VG.Mutable v ~ mv, PrimState m ~ s, VG.Vector v a)
       (v, x) <- f <$> SVG.freeze r
       v `seq` x `seq` SVG.copy r v
       return x
+
+instance Monad m => Ref m () () where
+    thawRef   _ = pure ()
+    freezeRef _ = pure ()
+    copyRef _ _ = pure ()
+
+instance (Monad m, Ref m a u, Ref m b v) => Ref m (a, b) (u, v) where
+    thawRef   (!x, !y) = (,) <$> thawRef x   <*> thawRef y
+    freezeRef (u , v ) = (,) <$> freezeRef u <*> freezeRef v
+    copyRef   (u , v ) (!x, !y) = copyRef u x *> copyRef v y
+
+instance (Monad m, Ref m a u, Ref m b v, Ref m c w) => Ref m (a, b, c) (u, v, w) where
+    thawRef   (!x, !y, !z) = (,,) <$> thawRef x   <*> thawRef y   <*> thawRef z
+    freezeRef (u , v , w ) = (,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w
+    copyRef   (u , v , w ) (!x, !y, !z) = copyRef u x *> copyRef v y *> copyRef w z
+
+instance (Monad m, Ref m a u, Ref m b v, Ref m c w, Ref m d j) => Ref m (a, b, c, d) (u, v, w, j) where
+    thawRef   (!x, !y, !z, !a) = (,,,) <$> thawRef x   <*> thawRef y   <*> thawRef z   <*> thawRef a
+    freezeRef (u , v , w , j ) = (,,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w <*> freezeRef j
+    copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
+

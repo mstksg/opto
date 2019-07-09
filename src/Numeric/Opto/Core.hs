@@ -24,7 +24,6 @@ module Numeric.Opto.Core (
 import           Control.Monad.Primitive
 import           Data.Kind
 import           Data.Primitive.MutVar
-import           Data.Type.ZipProd
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
@@ -32,9 +31,9 @@ type Diff     a = a
 type Grad m r a = r -> a -> m (Diff a)
 
 data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type where
-    MkOpto :: ScalingInPlace m v c a
-           => { oInit   :: !( RefVals m ss sVars )
-              , oUpdate :: !( RefVars m ss sVars
+    MkOpto :: forall s u m v r a c. (ScalingInPlace m v c a, Ref m s u)
+           => { oInit   :: !s
+              , oUpdate :: !( u
                            -> r
                            -> a
                            -> m (c, Diff a)
@@ -48,21 +47,21 @@ fromCopying
     -> (r -> a -> s -> m (c, Diff a, s))
     -> Opto m v r a
 fromCopying s0 update =
-    MkOpto { oInit   = onlyZP (RVl s0)
-            , oUpdate = \(headZP->RVr rS) r x -> do
+    MkOpto { oInit    = s0
+            , oUpdate = \rS r x -> do
                 (c, g, s) <- update r x =<< readMutVar rS
                 writeMutVar rS s
                 return (c, g)
             }
 
 fromStateless
-    :: ScalingInPlace m v c a
+    :: (ScalingInPlace m v c a)
     => (r -> a -> m (c, Diff a))
     -> Opto m v r a
 fromStateless update =
-    MkOpto { oInit   = ZPØ
-            , oUpdate = \_ -> update
-            }
+    MkOpto { oInit   = ()
+           , oUpdate = \(~()) -> update
+           }
 
 pureGrad
     :: Applicative m
