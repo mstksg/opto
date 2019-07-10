@@ -45,6 +45,7 @@ import           Control.Monad.Trans.Maybe
 import           Data.Conduit
 import           Data.Conduit.TQueue
 import           Data.Default
+import           Data.Functor
 import           Data.Functor.Contravariant
 import           Data.Maybe
 import           Data.MonoTraversable
@@ -264,6 +265,8 @@ foldOpto ro x0 o = fmap shuffle
                  . runStateT (runOpto (hoistRunOpts lift ro) sampleState x0 o)
   where
     shuffle ((x', o'), rs) = (x', rs, o')
+    {-# INLINE shuffle #-}
+{-# INLINE foldOpto #-}
 
 foldOpto_
     :: (Monad m, O.IsSequence rs, r ~ Element rs)
@@ -273,6 +276,7 @@ foldOpto_
     -> rs
     -> m (a, rs)
 foldOpto_ ro x0 o = runStateT (evalOpto (hoistRunOpts lift ro) sampleState x0 o)
+{-# INLINE foldOpto_ #-}
 
 sampleState
     :: (Monad m, O.IsSequence rs)
@@ -280,6 +284,7 @@ sampleState
 sampleState = state $ \xs -> case O.uncons xs of
   Nothing      -> (Nothing, mempty)
   Just (y, ys) -> (Just y , ys    )
+{-# INLINE sampleState #-}
 
 evalOptoParallel
     :: forall m v r a. (MonadUnliftIO m, Fractional a)
@@ -293,9 +298,10 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
     n       <- maybe getNumCapabilities pure poThreads
     hitStop <- newIORef Nothing
     gas     <- mapM newMVar (fromIntegral <$> roLimit)
-    let reportCheck = case roFreq of
+    let reSplit = roFreq <&> \r -> max 1 (r `div` (n * poSplit))
+        reportCheck = case reSplit of
           Nothing -> const False
-          Just r  -> \i -> (i + 1) `mod` (r `div` (n * poSplit)) == 0
+          Just r  -> \i -> (i + 1) `mod` r == 0
         loop !x !i = do
           xs <- fmap catMaybes . replicateConcurrently n $ do
             lim   <- maybe (pure poSplit) getGas gas
@@ -339,15 +345,17 @@ evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
     n       <- maybe getNumCapabilities pure poThreads
     hitStop <- newIORef Nothing
     gas     <- mapM newMVar (fromIntegral <$> roLimit)
-    let reportCheck = case roFreq of
+    let reSplit = roFreq <&> \r -> max 1 (r `div` (n * poSplit))
+        reportCheck = case reSplit of
           Nothing -> const False
-          Just r  -> \i -> (i + 1) `mod` (r `div` (n * poSplit)) == 0
+          Just r  -> \i -> (i + 1) `mod` r == 0
         loop !x !i = do
           xs <- fmap catMaybes . replicateConcurrently n $ do
             lim   <- maybe (pure poSplit) getGas gas
             items <- sampler lim
             if onull items
-              then Just . fst <$> do
+              then pure Nothing
+              else Just . fst <$> do
                 let ro' = ro
                       { roLimit    = Nothing
                       , roReport   = \_ -> pure ()
@@ -357,7 +365,6 @@ evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
                       , roFreq     = Nothing
                       }
                 foldOpto_ ro' x o items
-              else pure Nothing
           readIORef hitStop >>= \case
             Nothing    -> case NE.nonEmpty xs of
               Just xs' -> do
@@ -384,7 +391,8 @@ optoConduitParallel
     -> ConduitT () a m ()
 optoConduitParallel ro po x0 o src = do
     n <- lift . maybe getNumCapabilities pure . poThreads $ po
-    let buff = fromIntegral $ n * poSplit po
+    let buff0 = n * poSplit po
+        buff  = fromIntegral . maybe buff0 (min buff0) $ roLimit ro
     inQueue  <- atomically $ newTBMQueue buff
     outVar   <- newEmptyMVar
     sem      <- atomically $ newEmptyTMVar
@@ -417,7 +425,8 @@ optoConduitParallelChunk
     -> ConduitT () a m ()
 optoConduitParallelChunk ro po x0 o src = do
     n <- lift . maybe getNumCapabilities pure . poThreads $ po
-    let buff = fromIntegral $ n * poSplit po
+    let buff0 = n * poSplit po
+        buff  = fromIntegral . maybe buff0 (min buff0) $ roLimit ro
     inQueue  <- atomically $ newTBMQueue buff
     outVar   <- newEmptyMVar
     sem      <- atomically $ newEmptyTMVar

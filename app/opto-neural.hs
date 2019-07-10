@@ -118,7 +118,7 @@ main = MWC.withSystemRandom $ \g -> do
                (bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y))
 
         ro = def { roFreq  = Just 2500 }
-        po = def { poSplit = 500       }
+        po = def { poSplit = 750       }
 
         report b = do
           yield $ printf "(Batch %d)\n" (b :: Int)
@@ -139,13 +139,13 @@ main = MWC.withSystemRandom $ \g -> do
 
     case mode of
       "parallel":_ -> runConduit $
-            optoConduitParallel ro po net0 o
+            optoConduitParallelChunk ro po net0 o
                 ( forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
                                   >> C.yieldMany train .| shuffling g
                               )
                   .| C.iterM (atomically . writeTBQueue sampleQueue)
                 )
-         .| mapM_ report [0..10]
+         .| mapM_ report [0..]
          .| C.map T.pack
          .| C.encodeUtf8
          .| C.stdout
