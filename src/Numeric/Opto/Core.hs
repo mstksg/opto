@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -41,6 +42,14 @@ data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type where
                             )
               }
            -> Opto m v r a
+
+-- hoistOpto
+--     :: forall m n v r a. (forall c. ScalingInPlace m v c a => ScalingInPlace n v c a)
+--     => (forall s u c. (Ref m s u, Ref n s u) => m (c, a) -> n (c, a))
+--     -> Opto m v r a
+--     -> Opto n v r a
+-- hoistOpto f (MkOpto (i :: s) (p :: u -> r -> a -> m (c, Diff a)))
+--     = MkOpto @s @u @n @v @r @a @c i (\u r -> f @s @u @c . p u r)
 
 fromCopying
     :: (PrimMonad m, ScalingInPlace m v c a)

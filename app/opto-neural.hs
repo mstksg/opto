@@ -14,14 +14,14 @@
 {-# LANGUAGE ViewPatterns          #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 
+import           Control.Concurrent.STM
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Lens hiding                   ((<.>))
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Control.Monad.Trans.Class
+import           Control.Monad.Primitive
 import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans.State
 import           Data.Bitraversable
 import           Data.Conduit
 import           Data.Default
@@ -104,23 +104,31 @@ netErr x targ n = crossEntropy targ (runNet n x)
 
 main :: IO ()
 main = MWC.withSystemRandom $ \g -> do
-    datadir:_ <- getArgs
+    datadir:mode <- getArgs
     Just train <- loadMNIST (datadir </> "train-images-idx3-ubyte")
                             (datadir </> "train-labels-idx1-ubyte")
     Just test  <- loadMNIST (datadir </> "t10k-images-idx3-ubyte")
                             (datadir </> "t10k-labels-idx1-ubyte")
     putStrLn "Loaded data."
     net0 <- MWC.uniformR (-0.5, 0.5) g
-    let report n b = do
+    sampleQueue <- atomically $ newTBQueue 25000
+
+    let o :: PrimMonad m => Opto m (MutVar (PrimState m) Net) (R 784, R 10) Net
+        o = adam @_ @(MutVar _ Net) def
+               (bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y))
+
+        ro = def { roFreq  = Just 2500 }
+        po = def { poSplit = 500       }
+
+        report b = do
           yield $ printf "(Batch %d)\n" (b :: Int)
-          t0 <- liftIO getCurrentTime
-          C.drop (n - 1)
+          t0   <- liftIO getCurrentTime
           net' <- mapM (liftIO . evaluate . force) =<< await
-          t1 <- liftIO getCurrentTime
+          t1   <- liftIO getCurrentTime
           case net' of
             Nothing  -> yield "Done!\n"
             Just net -> do
-              chnk <- lift . state $ (,[])
+              chnk <- liftIO . atomically $ flushTBQueue sampleQueue
               yield $ printf "Trained on %d points in %s.\n"
                              (length chnk)
                              (show (t1 `diffUTCTime` t0))
@@ -129,20 +137,29 @@ main = MWC.withSystemRandom $ \g -> do
               yield $ printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
               yield $ printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
 
-    flip evalStateT []
-        . runConduit
-        $ forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
-                          >> C.yieldMany train .| shuffling g
-                      )
-       .| C.iterM (modify . (:))      -- add to state stack for train eval
-       .| optoConduit_ def net0
-            (adam @_ @(MutVar _ Net) def
-               (bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y))
-            )
-       .| mapM_ (report 2500) [0..]
-       .| C.map T.pack
-       .| C.encodeUtf8
-       .| C.stdout
+    case mode of
+      "parallel":_ -> runConduit $
+            optoConduitParallel ro po net0 o
+                ( forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
+                                  >> C.yieldMany train .| shuffling g
+                              )
+                  .| C.iterM (atomically . writeTBQueue sampleQueue)
+                )
+         .| mapM_ report [0..10]
+         .| C.map T.pack
+         .| C.encodeUtf8
+         .| C.stdout
+
+      _ -> runConduit $
+            forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
+                            >> C.yieldMany train .| shuffling g
+                        )
+         .| C.iterM (atomically . writeTBQueue sampleQueue)
+         .| optoConduit_ ro net0 o
+         .| mapM_ report [0..]
+         .| C.map T.pack
+         .| C.encodeUtf8
+         .| C.stdout
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)

@@ -42,11 +42,13 @@ library:
   dependencies:
   - finite-typelits
   - mono-traversable
-  - one-liner
-  - vector-sized >= 1.0
-  - unliftio
   - mtl
+  - one-liner
   - semigroupoids
+  - stm-chans
+  - stm-conduit
+  - unliftio
+  - vector-sized >= 1.0
 
 executables:
   opto-neural:
@@ -64,8 +66,9 @@ executables:
     - mnist-idx
     - one-liner-instances
     - opto
-    - time
+    - stm
     - text
+    - time
 
 # tests:
 #   opto-test:

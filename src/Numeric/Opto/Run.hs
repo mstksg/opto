@@ -21,6 +21,7 @@
 module Numeric.Opto.Run (
   -- * Options
     RunOpts(..)
+  , hoistRunOpts
   , ParallelOpts(..)
   -- * Single-threaded
   , runOpto, evalOpto
@@ -30,35 +31,33 @@ module Numeric.Opto.Run (
   , foldOpto, foldOpto_
   -- * Parallel
   , evalOptoParallel
+  , evalOptoParallelChunk
   -- ** Sampling Methods
+  , optoConduitParallel
+  , optoConduitParallelChunk
   ) where
 
 import           Control.Applicative
+import           Control.Concurrent.STM.TBMQueue
 import           Control.Monad
-import           Control.Monad.IO.Class
 import           Control.Monad.State
-import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Conduit
+import           Data.Conduit.TQueue
 import           Data.Default
+import           Data.Functor.Contravariant
 import           Data.Maybe
 import           Data.MonoTraversable
-import           Data.Proxy
 import           Data.Semigroup.Foldable
 import           GHC.Natural
-import           GHC.TypeNats
-import           Numeric.Natural
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 import           UnliftIO
-import           UnliftIO.Async
 import           UnliftIO.Concurrent
-import           UnliftIO.IORef
-import qualified Data.Conduit              as C
-import qualified Data.List.NonEmpty        as NE
-import qualified Data.Sequences            as O
-import qualified Data.Vector.Sized         as V
+import qualified Data.Conduit                    as C
+import qualified Data.List.NonEmpty              as NE
+import qualified Data.Sequences                  as O
 
 -- | Options for running an optimizer.
 data RunOpts m a = RO
@@ -97,9 +96,24 @@ instance Applicative m => Default (RunOpts m a) where
 
 instance Default ParallelOpts where
     def = PO
-      { poThreads   = Nothing
-      , poSplit = 1000
+      { poThreads = Nothing
+      , poSplit   = 1000
       }
+
+instance Contravariant (RunOpts m) where
+    contramap f ro = ro
+        { roStopCond = \d -> roStopCond ro (f d) . f
+        , roReport   = roReport ro . f
+        }
+
+hoistRunOpts
+    :: (forall x. m x -> n x)
+    -> RunOpts m a
+    -> RunOpts n a
+hoistRunOpts f ro = ro
+    { roStopCond = \d -> f . roStopCond ro d
+    , roReport   = f . roReport ro
+    }
 
 runOpto
     :: Monad m
@@ -216,19 +230,19 @@ optoLoop OL{..} = go 0
 
 optoConduit
     :: Monad m
-    => RunOpts (ConduitT r a m) a
+    => RunOpts m a
     -> a
     -> Opto (ConduitT r a m) v r a
     -> ConduitT r a m (Opto (ConduitT r a m) v r a)
 optoConduit ro x0 o = runOpto_ ro' C.await x0 o (const id)
   where
-    ro' = ro { roReport = \x -> C.yield x *> roReport ro x
-             }
+    ro' = (hoistRunOpts lift ro)
+        { roReport = \x -> C.yield x *> lift (roReport ro x) }
 {-# INLINE optoConduit #-}
 
 optoConduit_
     :: Monad m
-    => RunOpts (ConduitT r a m) a
+    => RunOpts m a
     -> a
     -> Opto (ConduitT r a m) v r a
     -> ConduitT r a m ()
@@ -241,24 +255,24 @@ optoConduit_ ro x0 = void . optoConduit ro x0
 
 foldOpto
     :: (Monad m, O.IsSequence rs, r ~ Element rs)
-    => RunOpts (StateT rs m) a
+    => RunOpts m a
     -> a
     -> Opto (StateT rs m) v r a
     -> rs
     -> m (a, rs, Opto (StateT rs m) v r a)
 foldOpto ro x0 o = fmap shuffle
-                 . runStateT (runOpto ro sampleState x0 o)
+                 . runStateT (runOpto (hoistRunOpts lift ro) sampleState x0 o)
   where
     shuffle ((x', o'), rs) = (x', rs, o')
 
 foldOpto_
     :: (Monad m, O.IsSequence rs, r ~ Element rs)
-    => RunOpts (StateT rs m) a
+    => RunOpts m a
     -> a
     -> Opto (StateT rs m) v r a
     -> rs
     -> m (a, rs)
-foldOpto_ ro x0 o = runStateT (evalOpto ro sampleState x0 o)
+foldOpto_ ro x0 o = runStateT (evalOpto (hoistRunOpts lift ro) sampleState x0 o)
 
 sampleState
     :: (Monad m, O.IsSequence rs)
@@ -279,7 +293,10 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
     n       <- maybe getNumCapabilities pure poThreads
     hitStop <- newIORef Nothing
     gas     <- mapM newMVar (fromIntegral <$> roLimit)
-    let parallelLoop !x !i = do
+    let reportCheck = case roFreq of
+          Nothing -> const False
+          Just r  -> \i -> (i + 1) `mod` (r `div` (n * poSplit)) == 0
+        loop !x !i = do
           xs <- fmap catMaybes . replicateConcurrently n $ do
             lim   <- maybe (pure poSplit) getGas gas
             if lim > 0
@@ -300,18 +317,128 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
                 let !x' = mean xs'
                 when (reportCheck i) $
                   roReport x'
-                parallelLoop x' (i + 1)
+                loop x' (i + 1)
               Nothing  -> pure x
             Just found -> pure found
-    parallelLoop x0 0
+    loop x0 0
   where
     getGas :: MVar Natural -> m Int
     getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
       Nothing -> pure (0, fromIntegral n)
       Just g  -> pure (g, poSplit       )
-    reportCheck = case roFreq of
-      Nothing -> const False
-      Just r  -> \i -> (i + 1) `mod` r == 0
+
+evalOptoParallelChunk
+    :: forall m v r a rs. (MonadUnliftIO m, Fractional a, O.IsSequence rs, r ~ Element rs)
+    => RunOpts m a
+    -> ParallelOpts
+    -> (Int -> m rs)
+    -> a
+    -> Opto (StateT rs m) v r a
+    -> m a
+evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
+    n       <- maybe getNumCapabilities pure poThreads
+    hitStop <- newIORef Nothing
+    gas     <- mapM newMVar (fromIntegral <$> roLimit)
+    let reportCheck = case roFreq of
+          Nothing -> const False
+          Just r  -> \i -> (i + 1) `mod` (r `div` (n * poSplit)) == 0
+        loop !x !i = do
+          xs <- fmap catMaybes . replicateConcurrently n $ do
+            lim   <- maybe (pure poSplit) getGas gas
+            items <- sampler lim
+            if onull items
+              then Just . fst <$> do
+                let ro' = ro
+                      { roLimit    = Nothing
+                      , roReport   = \_ -> pure ()
+                      , roStopCond = \d x' -> do
+                          sc <- roStopCond d x'
+                          sc <$ when sc (writeIORef hitStop (Just x'))
+                      , roFreq     = Nothing
+                      }
+                foldOpto_ ro' x o items
+              else pure Nothing
+          readIORef hitStop >>= \case
+            Nothing    -> case NE.nonEmpty xs of
+              Just xs' -> do
+                let !x' = mean xs'
+                when (reportCheck i) $
+                  roReport x'
+                loop x' (i + 1)
+              Nothing  -> pure x
+            Just found -> pure found
+    loop x0 0
+  where
+    getGas :: MVar Natural -> m Int
+    getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
+      Nothing -> pure (0, fromIntegral n)
+      Just g  -> pure (g, poSplit       )
+
+optoConduitParallel
+    :: forall m v r a. (MonadUnliftIO m, Fractional a)
+    => RunOpts m a
+    -> ParallelOpts
+    -> a
+    -> Opto m v r a
+    -> ConduitT () r m ()
+    -> ConduitT () a m ()
+optoConduitParallel ro po x0 o src = do
+    n <- lift . maybe getNumCapabilities pure . poThreads $ po
+    let buff = fromIntegral $ n * poSplit po
+    inQueue  <- atomically $ newTBMQueue buff
+    outVar   <- newEmptyMVar
+    sem      <- atomically $ newEmptyTMVar
+    let ro' = ro
+          { roReport = \x -> do
+              putMVar outVar (False, x)
+              roReport ro x
+          }
+    void . lift . forkIO $ runConduit (src .| sinkTBMQueue inQueue)
+    void . lift . forkIO $ do
+        x <- evalOptoParallel ro' po (atomically (readTMVar sem *> readTBMQueue inQueue)) x0 o
+        putMVar outVar (True, x)
+
+    let loop = do
+          atomically $ putTMVar sem ()
+          (done, r) <- takeMVar outVar
+          atomically $ takeTMVar sem      -- wait until yield before continuing
+          C.yield r
+          unless done loop
+
+    loop
+
+optoConduitParallelChunk
+    :: forall m v r a. (MonadUnliftIO m, Fractional a)
+    => RunOpts m a
+    -> ParallelOpts
+    -> a
+    -> Opto (StateT [r] m) v r a
+    -> ConduitT () r m ()
+    -> ConduitT () a m ()
+optoConduitParallelChunk ro po x0 o src = do
+    n <- lift . maybe getNumCapabilities pure . poThreads $ po
+    let buff = fromIntegral $ n * poSplit po
+    inQueue  <- atomically $ newTBMQueue buff
+    outVar   <- newEmptyMVar
+    sem      <- atomically $ newEmptyTMVar
+    let ro' = ro
+          { roReport = \x -> do
+              putMVar outVar (False, x)
+              roReport ro x
+          }
+        readChunk i = catMaybes <$> replicateM i (readTMVar sem *> readTBMQueue inQueue)
+    void . lift . forkIO $ runConduit (src .| sinkTBMQueue inQueue)
+    void . lift . forkIO $ do
+        x <- evalOptoParallelChunk ro' po (atomically . readChunk) x0 o
+        putMVar outVar (True, x)
+
+    let loop = do
+          atomically $ putTMVar sem ()
+          (done, r) <- takeMVar outVar
+          atomically $ takeTMVar sem      -- wait until yield before continuing
+          C.yield r
+          unless done loop
+    loop
 
 mean :: (Foldable1 t, Fractional a) => t a -> a
 mean = go . foldMap1 (`Sum2` 1)
