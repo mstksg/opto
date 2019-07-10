@@ -25,20 +25,20 @@ module Numeric.Opto.Run (
   , ParallelOpts(..)
   , hoistParallelOpts
   -- * Single-threaded
-  , runOpto
-  , evalOpto
-  , runOptoNonSampling
-  , evalOptoNonSampling
+  , opto
+  , opto'
+  , optoNonSampling'
+  , optoNonSampling
   -- ** Sampling methods
-  , optoConduit, optoConduit_
-  , foldOpto, foldOpto_
+  , optoConduit, optoConduit'
+  , optoFold, optoFold'
   -- * Parallel
-  , evalOptoParallel
-  , evalOptoParallelChunk
-  , evalOptoParallelNonSampling
+  , optoPar
+  , optoParChunk
+  , optoParNonSampling
   -- ** Sampling Methods
-  , optoConduitParallel
-  , optoConduitParallelChunk
+  , optoConduitPar
+  , optoConduitParChunk
   -- * Util
   , mean
   ) where
@@ -144,45 +144,45 @@ hoistParallelOpts f po = po
     { poCombine = f . poCombine po
     }
 
-runOpto
+opto'
     :: Monad m
     => RunOpts m a
     -> m (Maybe r)
     -> a
     -> Opto m v r a
     -> m (a, Opto m v r a)
-runOpto ro sampler x0 o = runOpto_ ro sampler x0 o (liftA2 (,))
-{-# INLINE runOpto #-}
+opto' ro sampler x0 o = opto_ ro sampler x0 o (liftA2 (,))
+{-# INLINE opto' #-}
 
-runOptoNonSampling
+optoNonSampling'
     :: Monad m
     => RunOpts m a
     -> a
     -> Opto m v () a
     -> m (a, Opto m v () a)
-runOptoNonSampling ro = runOpto ro (pure (Just ()))
-{-# INLINE runOptoNonSampling #-}
+optoNonSampling' ro = opto' ro (pure (Just ()))
+{-# INLINE optoNonSampling' #-}
 
-evalOpto
+opto
     :: Monad m
     => RunOpts m a
     -> m (Maybe r)
     -> a
     -> Opto m v r a
     -> m a
-evalOpto ro sampler x0 o = runOpto_ ro sampler x0 o const
-{-# INLINE evalOpto #-}
+opto ro sampler x0 o = opto_ ro sampler x0 o const
+{-# INLINE opto #-}
 
-evalOptoNonSampling
+optoNonSampling
     :: Monad m
     => RunOpts m a
     -> a
     -> Opto m v () a
     -> m a
-evalOptoNonSampling ro = evalOpto ro (pure (Just ()))
-{-# INLINE evalOptoNonSampling #-}
+optoNonSampling ro = opto ro (pure (Just ()))
+{-# INLINE optoNonSampling #-}
 
-runOpto_
+opto_
     :: forall m v r a q. Monad m
     => RunOpts m a
     -> m (Maybe r)
@@ -190,7 +190,7 @@ runOpto_
     -> Opto m v r a
     -> (m a -> m (Opto m v r a) -> m q)
     -> m q
-runOpto_ RO{..} sampler x0 MkOpto{..} f = do
+opto_ RO{..} sampler x0 MkOpto{..} f = do
     rS <- thawRef oInit
     rX <- thawRef @_ @a @v x0
     optoLoop OL
@@ -207,7 +207,7 @@ runOpto_ RO{..} sampler x0 MkOpto{..} f = do
       , olReportAct   = roReport
       }
     f (freezeRef rX) (flip MkOpto oUpdate <$> freezeRef rS)
-{-# INLINE runOpto_ #-}
+{-# INLINE opto_ #-}
 
 data OptoLoop m v r a c = OL
     { olLimit       :: Maybe Int
@@ -257,54 +257,54 @@ optoLoop OL{..} = go 0
       (k,) . Just . (scaleOne @c @a,) <$> olRead v
 {-# INLINE optoLoop #-}
 
-optoConduit
+optoConduit'
     :: Monad m
     => RunOpts m a
     -> a
     -> Opto (ConduitT r a m) v r a
     -> ConduitT r a m (Opto (ConduitT r a m) v r a)
-optoConduit ro x0 o = runOpto_ ro' C.await x0 o (const id)
+optoConduit' ro x0 o = opto_ ro' C.await x0 o (const id)
   where
     ro' = (hoistRunOpts lift ro)
         { roReport = \x -> C.yield x *> lift (roReport ro x) }
-{-# INLINE optoConduit #-}
+{-# INLINE optoConduit' #-}
 
-optoConduit_
+optoConduit
     :: Monad m
     => RunOpts m a
     -> a
     -> Opto (ConduitT r a m) v r a
     -> ConduitT r a m ()
-optoConduit_ ro x0 = void . optoConduit ro x0
-{-# INLINE optoConduit_ #-}
+optoConduit ro x0 = void . optoConduit' ro x0
+{-# INLINE optoConduit #-}
 
 -- | 'runOptoSample' specialized for 'FoldSampleT': give it a collection of
 -- items @rs@, and it will process each item @r@.  Returns the optimized
 -- @a@, the leftover @rs@, and a closure 'Opto' that can be resumed.
 
-foldOpto
+optoFold'
     :: (Monad m, O.IsSequence rs, r ~ Element rs)
     => RunOpts m a
     -> a
     -> Opto (StateT rs m) v r a
     -> rs
     -> m (a, rs, Opto (StateT rs m) v r a)
-foldOpto ro x0 o = fmap shuffle
-                 . runStateT (runOpto (hoistRunOpts lift ro) sampleState x0 o)
+optoFold' ro x0 o = fmap shuffle
+                 . runStateT (opto' (hoistRunOpts lift ro) sampleState x0 o)
   where
     shuffle ((x', o'), rs) = (x', rs, o')
     {-# INLINE shuffle #-}
-{-# INLINE foldOpto #-}
+{-# INLINE optoFold' #-}
 
-foldOpto_
+optoFold
     :: (Monad m, O.IsSequence rs, r ~ Element rs)
     => RunOpts m a
     -> a
     -> Opto (StateT rs m) v r a
     -> rs
     -> m (a, rs)
-foldOpto_ ro x0 o = runStateT (evalOpto (hoistRunOpts lift ro) sampleState x0 o)
-{-# INLINE foldOpto_ #-}
+optoFold ro x0 o = runStateT (opto (hoistRunOpts lift ro) sampleState x0 o)
+{-# INLINE optoFold #-}
 
 sampleState
     :: (Monad m, O.IsSequence rs)
@@ -314,7 +314,7 @@ sampleState = state $ \xs -> case O.uncons xs of
   Just (y, ys) -> (Just y , ys    )
 {-# INLINE sampleState #-}
 
-evalOptoParallel
+optoPar
     :: forall m v r a. MonadUnliftIO m
     => RunOpts m a
     -> ParallelOpts m a
@@ -322,7 +322,7 @@ evalOptoParallel
     -> a
     -> Opto m v r a
     -> m a
-evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
+optoPar ro@RO{..} PO{..} sampler x0 o = do
     n       <- maybe getNumCapabilities pure poThreads
     hitStop <- newIORef Nothing
     gas     <- mapM newMVar (fromIntegral <$> roLimit)
@@ -343,7 +343,7 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
                           sc <$ when sc (writeIORef hitStop (Just x'))
                       , roFreq     = Nothing
                       }
-                evalOpto ro' sampler x o
+                opto ro' sampler x o
               else pure Nothing
           readIORef hitStop >>= \case
             Nothing    -> case NE.nonEmpty xs of
@@ -360,19 +360,19 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
     getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
       Nothing -> pure (0, fromIntegral n)
       Just g  -> pure (g, poSplit       )
-{-# INLINE evalOptoParallel #-}
+{-# INLINE optoPar #-}
 
-evalOptoParallelNonSampling
+optoParNonSampling
     :: MonadUnliftIO m
     => RunOpts m a
     -> ParallelOpts m a
     -> a
     -> Opto m v () a
     -> m a
-evalOptoParallelNonSampling ro po = evalOptoParallel ro po (pure (Just ()))
-{-# INLINE evalOptoParallelNonSampling #-}
+optoParNonSampling ro po = optoPar ro po (pure (Just ()))
+{-# INLINE optoParNonSampling #-}
 
-evalOptoParallelChunk
+optoParChunk
     :: forall m v r a rs. (MonadUnliftIO m, O.IsSequence rs, r ~ Element rs)
     => RunOpts m a
     -> ParallelOpts m a
@@ -380,7 +380,7 @@ evalOptoParallelChunk
     -> a
     -> Opto (StateT rs m) v r a
     -> m a
-evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
+optoParChunk ro@RO{..} PO{..} sampler x0 o = do
     n       <- maybe getNumCapabilities pure poThreads
     hitStop <- newIORef Nothing
     gas     <- mapM newMVar (fromIntegral <$> roLimit)
@@ -403,7 +403,7 @@ evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
                           sc <$ when sc (writeIORef hitStop (Just x'))
                       , roFreq     = Nothing
                       }
-                foldOpto_ ro' x o items
+                optoFold ro' x o items
           readIORef hitStop >>= \case
             Nothing    -> case NE.nonEmpty xs of
               Just xs' -> do
@@ -419,9 +419,9 @@ evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
     getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
       Nothing -> pure (0, fromIntegral n)
       Just g  -> pure (g, poSplit       )
-{-# INLINE evalOptoParallelChunk #-}
+{-# INLINE optoParChunk #-}
 
-optoConduitParallel
+optoConduitPar
     :: forall m v r a. MonadUnliftIO m
     => RunOpts m a
     -> ParallelOpts m a
@@ -429,7 +429,7 @@ optoConduitParallel
     -> Opto m v r a
     -> ConduitT () r m ()
     -> ConduitT () a m ()
-optoConduitParallel ro po x0 o src = do
+optoConduitPar ro po x0 o src = do
     n <- lift . maybe getNumCapabilities pure . poThreads $ po
     let buff0 = n * poSplit po
         buff  = fromIntegral . maybe buff0 (min buff0) $ roLimit ro
@@ -443,7 +443,7 @@ optoConduitParallel ro po x0 o src = do
           }
     void . lift . forkIO $ runConduit (src .| sinkTBMQueue inQueue)
     void . lift . forkIO $ do
-        x <- evalOptoParallel ro' po (atomically (readTMVar sem *> readTBMQueue inQueue)) x0 o
+        x <- optoPar ro' po (atomically (readTMVar sem *> readTBMQueue inQueue)) x0 o
         putMVar outVar (True, x)
 
     let loop = do
@@ -454,9 +454,9 @@ optoConduitParallel ro po x0 o src = do
           unless done loop
 
     loop
-{-# INLINE optoConduitParallel #-}
+{-# INLINE optoConduitPar #-}
 
-optoConduitParallelChunk
+optoConduitParChunk
     :: forall m v r a. MonadUnliftIO m
     => RunOpts m a
     -> ParallelOpts m a
@@ -464,7 +464,7 @@ optoConduitParallelChunk
     -> Opto (StateT [r] m) v r a
     -> ConduitT () r m ()
     -> ConduitT () a m ()
-optoConduitParallelChunk ro po x0 o src = do
+optoConduitParChunk ro po x0 o src = do
     n <- lift . maybe getNumCapabilities pure . poThreads $ po
     let buff0 = n * poSplit po
         buff  = fromIntegral . maybe buff0 (min buff0) $ roLimit ro
@@ -479,7 +479,7 @@ optoConduitParallelChunk ro po x0 o src = do
         readChunk i = catMaybes <$> replicateM i (readTMVar sem *> readTBMQueue inQueue)
     void . lift . forkIO $ runConduit (src .| sinkTBMQueue inQueue)
     void . lift . forkIO $ do
-        x <- evalOptoParallelChunk ro' po (atomically . readChunk) x0 o
+        x <- optoParChunk ro' po (atomically . readChunk) x0 o
         putMVar outVar (True, x)
 
     let loop = do
@@ -489,7 +489,7 @@ optoConduitParallelChunk ro po x0 o src = do
           C.yield r
           unless done loop
     loop
-{-# INLINE optoConduitParallelChunk #-}
+{-# INLINE optoConduitParChunk #-}
 
 mean :: (Foldable1 t, Fractional a) => t a -> a
 mean = go . foldMap1 (`Sum2` 1)

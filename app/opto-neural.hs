@@ -139,7 +139,7 @@ main = MWC.withSystemRandom $ \g -> do
 
     case mode of
       "parallel":_ -> runConduit $
-            optoConduitParallelChunk ro po net0 o
+            optoConduitPar ro po net0 o
                 ( forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
                                   >> C.yieldMany train .| shuffling g
                               )
@@ -155,7 +155,7 @@ main = MWC.withSystemRandom $ \g -> do
                             >> C.yieldMany train .| shuffling g
                         )
          .| C.iterM (atomically . writeTBQueue sampleQueue)
-         .| optoConduit_ ro net0 o
+         .| optoConduit ro net0 o
          .| mapM_ report [0..]
          .| C.map T.pack
          .| C.encodeUtf8
