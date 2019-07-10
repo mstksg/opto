@@ -223,9 +223,10 @@ RO :: (Diff a -> a -> m Bool) -> (a -> m ()) -> Maybe Int -> Int -> Maybe Int ->
 -- | Reporting function (default = no report)
 [roReport] :: RunOpts m a -> a -> m ()
 
--- | number of batches to run (Nothing = run forever) (default = Nothing) |
---   Size of batching updates (1 = no batching) (default = 1)
+-- | Number of batches to run (Nothing = run forever) (default = Nothing).
 [roLimit] :: RunOpts m a -> Maybe Int
+
+-- | Size of batching updates (1 = no batching) (default = 1)
 [roBatch] :: RunOpts m a -> Int
 
 -- | batches per report (Nothing = never report) (default = Just 1).
