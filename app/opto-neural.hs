@@ -37,6 +37,7 @@ import           Numeric.LinearAlgebra.Static.Backprop
 import           Numeric.OneLiner
 import           Numeric.Opto hiding                   ((<.>))
 import           Numeric.Opto.Backprop
+import           Options.Applicative
 import           System.Environment
 import           System.FilePath hiding                ((<.>))
 import           Text.Printf
@@ -156,6 +157,7 @@ main = MWC.withSystemRandom $ \g -> do
                         )
          .| C.iterM (atomically . writeTBQueue sampleQueue)
          .| optoConduit ro net0 o
+         .| forever (C.drop 2499 *> (mapM_ yield =<< await))
          .| mapM_ report [0..]
          .| C.map T.pack
          .| C.encodeUtf8

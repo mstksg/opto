@@ -70,6 +70,7 @@ executables:
     - stm
     - text
     - time
+    - optparse-applicative
 
 # tests:
 #   opto-test:
