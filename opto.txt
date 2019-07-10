@@ -231,11 +231,13 @@ RO :: (Diff a -> a -> m Bool) -> (a -> m ()) -> Maybe Int -> Int -> Maybe Int ->
 
 -- | batches per report (Nothing = never report) (default = Just 1).
 [roFreq] :: RunOpts m a -> Maybe Int
+
+-- | Map over the underlying monad of a <a>RunOpts</a>.
 hoistRunOpts :: (forall x. m x -> n x) -> RunOpts m a -> RunOpts n a
 
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts m a
-PO :: Maybe Int -> Int -> (NonEmpty a -> m a) -> ParallelOpts m a
+PO :: Maybe Int -> Int -> (NonEmpty a -> m a) -> Bool -> ParallelOpts m a
 
 -- | Number of threads (Nothing = max capacity) (default = Nothing)
 [poThreads] :: ParallelOpts m a -> Maybe Int
@@ -247,25 +249,118 @@ PO :: Maybe Int -> Int -> (NonEmpty a -> m a) -> ParallelOpts m a
 -- | How to recombine a pool of updated results into a single result
 --   (default = <tt><a>pure</a> <a>.</a> <a>mean</a></tt>)
 [poCombine] :: ParallelOpts m a -> NonEmpty a -> m a
-hoistParallelOpts :: (forall x. m x -> n x) -> ParallelOpts m a -> ParallelOpts n a
-opto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
-opto' :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
-optoNonSampling' :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
-optoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
-optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
-optoConduit' :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
-optoFold :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
 
--- | <tt>runOptoSample</tt> specialized for <tt>FoldSampleT</tt>: give it a
---   collection of items <tt>rs</tt>, and it will process each item
---   <tt>r</tt>. Returns the optimized <tt>a</tt>, the leftover
---   <tt>rs</tt>, and a closure <a>Opto</a> that can be resumed.
-optoFold' :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
+-- | For conduit runners, whether or not conduit is in "pull-based" mode,
+--   where optimization doesn't happen until requested downstream. This is
+--   ignored if not running via conduit (default = True)
+[poPull] :: ParallelOpts m a -> Bool
+
+-- | Map over the underlying monad of a <a>ParallelOpts</a>.
+hoistParallelOpts :: (forall x. m x -> n x) -> ParallelOpts m a -> ParallelOpts n a
+
+-- | Run an optimizer on some input, given a monadic action to produce each
+--   new sample. When the action produces <a>Nothing</a>, the running
+--   immediately terminates even if the stop condition has not yet been
+--   met.
+opto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
+
+-- | A version of <a>opto</a> that also returns an updated optimizer state
+--   that can be resumed.
+opto' :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
+
+-- | A version of <a>optoNonSampling</a> that also returns an updated
+--   optimizer state that can be resumed.
+optoNonSampling' :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
+
+-- | Run a non-sampling optimizer on some input until the stop condition is
+--   met.
+optoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
+
+-- | Given an optimizer and some initial value, produce a <a>ConduitT</a>
+--   that takes in samples and outputs each successively optimized versions
+--   of the value. This essentially is a convenient wrapper over
+--   <a>opto</a>.
+--   
+--   To get the <i>final</i> optimized result after a stream has
+--   terminated, compose this with a sink like <a>last</a>.
+--   
+--   <pre>
+--   <a>optoConduit</a> ro x0 o .| <a>last</a>
+--     :: ConduitT r o m (Maybe a)
+--   
+--   <a>optoConduit</a> ro x0 o .| <a>lastDef</a> x0
+--     :: ConduitT r o m a
+--   </pre>
+optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
+
+-- | A version of <a>optoConduit</a> that also returns an updated optimizer
+--   state that can be resumed.
+optoConduit' :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
+
+-- | Convenient wrapper over <a>opto</a> to allow consumption over a list
+--   of samples.
+optoFold :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) v r a -> [r] -> m (a, [r])
+
+-- | A version of <a>optoFold'</a> that also returns an updated optimizer
+--   state that can be resumed.
+optoFold' :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) v r a -> [r] -> m (a, [r], Opto (StateT [r] m) v r a)
+
+-- | Run an optimizer in parallel on multiple threads on some value, given
+--   a (thread-safe) monadic action to produce each new sample.
+--   
+--   It does this by repeatedly:
+--   
+--   <ol>
+--   <li>Splitting into multiple threads (based on <a>poThreads</a>)</li>
+--   <li>Running <a>opto</a> (single-threaded optimiztion) on each thread,
+--   independently, from the same initial value.</li>
+--   <li>After <a>poSplit</a> items have been processed, all threads wait
+--   on each other to stop. After each thread is done, each thread's
+--   optimized value is then aggregated using <a>poCombine</a> (by default,
+--   it takes the mean).</li>
+--   <li>This new optimized combined value is then used to begin the cycle
+--   again.</li>
+--   </ol>
+--   
+--   When action produces <a>Nothing</a> for <i>all</i> threads, the
+--   running immediately terminates on all threads and returns even if the
+--   stop condition has not yet been met. If the stop condition is met, the
+--   value given to the stop condition will be used as the final result,
+--   ignoring all other thread pools.
 optoPar :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
-optoParChunk :: forall m v r a rs. (MonadUnliftIO m, IsSequence rs, r ~ Element rs) => RunOpts m a -> ParallelOpts m a -> (Int -> m rs) -> a -> Opto (StateT rs m) v r a -> m a
+
+-- | A version of <a>optoPar</a> that performs a batch fetch for each
+--   thread's entire sample pool <i>before</i> beginning parallel
+--   optimization. This can be useful if the sampling is faster in batch
+--   amounts.
+optoParChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> (Int -> m [r]) -> a -> Opto (StateT [r] m) v r a -> m a
+
+-- | Run a non-sampling optimizer in parallel on multiple threads on some
+--   value until the stop condition is met.
+--   
+--   See <a>optoPar</a> for a detailed description of how parallel
+--   optimization is implemented.
 optoParNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v () a -> m a
+
+-- | Given an optimizer, some initial value, and a conduit <i>source</i>,
+--   returns a conduit sorce that outputs succesively optimized versions of
+--   the value after each thread recombination, where each version is
+--   optimized using parallel multi-threaded optimization.
+--   
+--   See <a>optoPar</a> for a detailed description on how parallel
+--   optimization is implemented.
+--   
+--   Note that, unlike <a>optoConduit</a>, which is a conduit, this is a
+--   conduit (source) <i>transformer</i>. It takes a source outputting
+--   <i>samples</i> and returns a <i>new</i> source of <i>optimized
+--   values</i>.
+--   
+--   A value is emitted after every thread recombination/call of
+--   <a>poCombine</a>.
 optoConduitPar :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
 optoConduitParChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
+
+-- | The mean of the values in a non-empty container.
 mean :: (Foldable1 t, Fractional a) => t a -> a
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
