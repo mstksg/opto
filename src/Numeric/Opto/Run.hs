@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -21,51 +22,68 @@ module Numeric.Opto.Run (
   -- * Options
     RunOpts(..)
   , ParallelOpts(..)
-  -- * Run
+  -- * Single-threaded
   , runOpto, evalOpto
   , runOptoNonSampling, evalOptoNonSampling
+  -- ** Sampling methods
   , optoConduit, optoConduit_
   , foldOpto, foldOpto_
-  -- -- * Parallel
-  -- , evalOptoParallel
-  -- , runOptoParallel
+  -- * Parallel
+  , evalOptoParallel
+  -- ** Sampling Methods
   ) where
 
--- import           Control.Monad.Sample
--- import           Data.Functor
--- import           UnliftIO.Async
--- import           UnliftIO.IORef
 import           Control.Applicative
 import           Control.Monad
--- import           Control.Monad.IO.Unlift
+import           Control.Monad.IO.Class
+import           Control.Monad.State
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
-import           Control.Monad.Trans.State.Strict
--- import           Data.Bifunctor
 import           Data.Conduit
 import           Data.Default
 import           Data.Maybe
 import           Data.MonoTraversable
+import           Data.Proxy
+import           Data.Semigroup.Foldable
+import           GHC.Natural
+import           GHC.TypeNats
+import           Numeric.Natural
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
--- import           UnliftIO.Concurrent
-import qualified Data.Conduit                     as C
-import qualified Data.Sequences                   as O
+import           UnliftIO
+import           UnliftIO.Async
+import           UnliftIO.Concurrent
+import           UnliftIO.IORef
+import qualified Data.Conduit              as C
+import qualified Data.List.NonEmpty        as NE
+import qualified Data.Sequences            as O
+import qualified Data.Vector.Sized         as V
 
 -- | Options for running an optimizer.
 data RunOpts m a = RO
-    { roStopCond :: Diff a -> a -> m Bool
-    , roReport   :: a -> m ()  -- ^ reporting function
-    , roLimit    :: Maybe Int  -- ^ number of batches to run (Nothing = run forever)
-    , roBatch    :: Int        -- ^ batching updates
-    , roFreq     :: Maybe Int  -- ^ batches per report (Nothing = never report)
+    { -- | Stop condition; will stop when 'True' (default = never stop)
+      roStopCond :: Diff a -> a -> m Bool
+      -- | Reporting function (default = no report)
+    , roReport   :: a -> m ()
+      -- | Number of batches to run (Nothing = run forever) (default = Nothing).
+    , roLimit    :: Maybe Int  -- ^ number of batches to run (Nothing = run forever) (default = Nothing)
+      -- | Size of batching updates (1 = no batching) (default = 1)
+    , roBatch    :: Int
+      -- | Frequency that 'roReport' will be called (batches per report)
+      -- (Nothing = never report) (default = Just 1)
+      --
+      -- When run in parallel, this is instead the frequency in
+      -- aggregations per report.
+    , roFreq     :: Maybe Int  -- ^ batches per report (Nothing = never report) (default = Just 1).
     }
 
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts = PO
-    { poThreads   :: Maybe Int   -- ^ Number of threads. Will default to max capacity
-    , poSplitRuns :: Int         -- ^ How much each thread will process before regrouping
+    { -- | Number of threads (Nothing = max capacity) (default = Nothing)
+      poThreads   :: Maybe Int
+      -- ^ How many batches thread will process before regrouping (default = 1000)
+    , poSplit :: Int
     }
 
 instance Applicative m => Default (RunOpts m a) where
@@ -77,44 +95,11 @@ instance Applicative m => Default (RunOpts m a) where
       , roFreq     = Just 1
       }
 
---runOptoSample
---    :: MonadSample r m
---    => RunOpts m a
---    -> a
---    -> Opto m v a
---    -> m (a, Opto m v a)
---runOptoSample ro x o = runOptoSample_ ro x o (liftA2 (,))
---{-# INLINE runOptoSample #-}
-
---evalOptoSample
---    :: MonadSample r m
---    => RunOpts m a
---    -> a
---    -> Opto m v a
---    -> m a
---evalOptoSample ro x o = runOptoSample_ ro x o const
---{-# INLINE evalOptoSample #-}
-
---runOptoSample_
---    :: forall m v a r q. MonadSample r m
---    => RunOpts m a
---    -> a
---    -> Opto m v a
---    -> (m a -> m (Opto m v a) -> m q)
---    -> m q
---runOptoSample_ RO{..} x0 MkOpto{..} f = do
---    rSs <- thawRefs oInit
---    rX  <- thawRef @_ @a @v x0
---    optoLoop roLimit roBatch roFreq
---        (thawRef @_ @a @v)
---        (.*+=)
---        freezeRef
---        rX
---        (oUpdate rSs)
---        roStopCond
---        roReport
---    f (freezeRef rX) (flip MkOpto oUpdate <$> pullRefs rSs)
---{-# INLINE runOptoSample_ #-}
+instance Default ParallelOpts where
+    def = PO
+      { poThreads   = Nothing
+      , poSplit = 1000
+      }
 
 runOpto
     :: Monad m
@@ -155,7 +140,7 @@ evalOptoNonSampling ro = evalOpto ro (pure (Just ()))
 {-# INLINE evalOptoNonSampling #-}
 
 runOpto_
-    :: forall m v a r q. Monad m
+    :: forall m v r a q. Monad m
     => RunOpts m a
     -> m (Maybe r)
     -> a
@@ -206,9 +191,10 @@ optoLoop OL{..} = go 0
       (exhausted, cg) <- batcher x
       forM_ cg $ \(c, g) -> do
         olUpdate olVar (c, g)
+        x' <- olRead olVar
         when (reportCheck i) $
-          olReportAct =<< olRead olVar
-        stopper <- olStopCond (c .* g) x
+          olReportAct x'
+        stopper <- olStopCond (c .* g) x'
         when (not exhausted && not stopper) $
           go (i + 1)
     limCheck = case olLimit of
@@ -281,71 +267,67 @@ sampleState = state $ \xs -> case O.uncons xs of
   Nothing      -> (Nothing, mempty)
   Just (y, ys) -> (Just y , ys    )
 
+evalOptoParallel
+    :: forall m v r a. (MonadUnliftIO m, Fractional a)
+    => RunOpts m a
+    -> ParallelOpts
+    -> m (Maybe r)
+    -> a
+    -> Opto m v r a
+    -> m a
+evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
+    n       <- maybe getNumCapabilities pure poThreads
+    hitStop <- newIORef Nothing
+    gas     <- mapM newMVar (fromIntegral <$> roLimit)
+    let parallelLoop !x !i = do
+          xs <- fmap catMaybes . replicateConcurrently n $ do
+            lim   <- maybe (pure poSplit) getGas gas
+            if lim > 0
+              then Just <$> do
+                let ro' = ro
+                      { roLimit    = Just lim
+                      , roReport   = \_ -> pure ()
+                      , roStopCond = \d x' -> do
+                          sc <- roStopCond d x'
+                          sc <$ when sc (writeIORef hitStop (Just x'))
+                      , roFreq     = Nothing
+                      }
+                evalOpto ro' sampler x o
+              else pure Nothing
+          readIORef hitStop >>= \case
+            Nothing    -> case NE.nonEmpty xs of
+              Just xs' -> do
+                let !x' = mean xs'
+                when (reportCheck i) $
+                  roReport x'
+                parallelLoop x' (i + 1)
+              Nothing  -> pure x
+            Just found -> pure found
+    parallelLoop x0 0
+  where
+    getGas :: MVar Natural -> m Int
+    getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
+      Nothing -> pure (0, fromIntegral n)
+      Just g  -> pure (g, poSplit       )
+    reportCheck = case roFreq of
+      Nothing -> const False
+      Just r  -> \i -> (i + 1) `mod` r == 0
 
--- mean :: (Foldable t, Fractional a) => t a -> a
--- mean = go . foldMap (`Sum2` 1)
---   where
---     go (Sum2 x n) = x / fromInteger n
---     {-# INLINE go #-}
--- {-# INLINE mean #-}
+mean :: (Foldable1 t, Fractional a) => t a -> a
+mean = go . foldMap1 (`Sum2` 1)
+  where
+    go (Sum2 x n) = x / fromInteger n
+    {-# INLINE go #-}
+{-# INLINE mean #-}
 
--- data Sum2 a b = Sum2 !a !b
+data Sum2 a b = Sum2 !a !b
 
--- instance (Num a, Num b) => Semigroup (Sum2 a b) where
---     Sum2 x1 y1 <> Sum2 x2 y2 = Sum2 (x1 + x2) (y1 + y2)
---     {-# INLINE (<>) #-}
+instance (Num a, Num b) => Semigroup (Sum2 a b) where
+    Sum2 x1 y1 <> Sum2 x2 y2 = Sum2 (x1 + x2) (y1 + y2)
+    {-# INLINE (<>) #-}
 
--- instance (Num a, Num b) => Monoid (Sum2 a b) where
---     mappend = (<>)
---     {-# INLINE mappend #-}
---     mempty = Sum2 0 0
---     {-# INLINE mempty #-}
-
--- -- | Like 'evalOptoParallel', but returns closures (one for each thread)
--- -- from which one can "resume" an optimizer from where it leaves off with
--- -- its state in each thread.
--- runOptoParallel
---     :: (MonadUnliftIO m, Fractional a)
---     => RunOpts m a
---     -> ParallelOpts
---     -> a
---     -> Opto m v a
---     -> m (a, [Opto m v a])
--- runOptoParallel ro PO{..} x0 o0 = do
---     n <- maybe getNumCapabilities pure poThreads
---     hitStop <- newIORef Nothing
---     let os0 = replicate n o0
---     fmap (maybe (x0, os0) fst)
---         . runMaybeT
---         . flip execStateT ((x0, os0), 0)
---         . many
---         . StateT $ \((x,os), i) -> do
---       maybe (pure ()) (const empty) =<< readIORef hitStop
---       m <- case roLimit ro of
---         Nothing -> pure poSplitRuns
---         Just l  -> do
---           guard (i < l) $>
---             if i + poSplitRuns <= l
---               then poSplitRuns
---               else l - i
---       (xs, os') <- lift . fmap unzip . forConcurrently os $ \o ->
---         runOpto (ro { roLimit    = Just m
---                     , roStopCond = \d y -> do
---                         s <- roStopCond ro d y
---                         when s $ writeIORef hitStop $ Just y
---                         return s
---                     }
---                 ) x o
---       newX <- fromMaybe (mean xs) <$> readIORef hitStop
---       return ((), ((newX, os'), i + m))
-
--- -- | Optimize an @a@ times in parallel, and aggregate all the results
--- -- together by taking the mean.
--- evalOptoParallel
---     :: (MonadUnliftIO m, Fractional a)
---     => RunOpts m a
---     -> ParallelOpts
---     -> a
---     -> Opto m v a
---     -> m a
--- evalOptoParallel ro po x = fmap fst . runOptoParallel ro po x
+instance (Num a, Num b) => Monoid (Sum2 a b) where
+    mappend = (<>)
+    {-# INLINE mappend #-}
+    mempty = Sum2 0 0
+    {-# INLINE mempty #-}

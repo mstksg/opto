@@ -44,6 +44,9 @@ library:
   - mono-traversable
   - one-liner
   - vector-sized >= 1.0
+  - unliftio
+  - mtl
+  - semigroupoids
 
 executables:
   opto-neural:
