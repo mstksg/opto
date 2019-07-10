@@ -244,24 +244,24 @@ PO :: Maybe Int -> Int -> (NonEmpty a -> m a) -> ParallelOpts m a
 [poSplit] :: ParallelOpts m a -> Int
 [poCombine] :: ParallelOpts m a -> NonEmpty a -> m a
 hoistParallelOpts :: (forall x. m x -> n x) -> ParallelOpts m a -> ParallelOpts n a
-runOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
-evalOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
-runOptoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
-evalOptoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
-optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
-optoConduit_ :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
+opto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
+opto' :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
+optoNonSampling' :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
+optoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
+optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
+optoConduit' :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
+optoFold :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
 
 -- | <tt>runOptoSample</tt> specialized for <tt>FoldSampleT</tt>: give it a
 --   collection of items <tt>rs</tt>, and it will process each item
 --   <tt>r</tt>. Returns the optimized <tt>a</tt>, the leftover
 --   <tt>rs</tt>, and a closure <a>Opto</a> that can be resumed.
-foldOpto :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
-foldOpto_ :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
-evalOptoParallel :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
-evalOptoParallelChunk :: forall m v r a rs. (MonadUnliftIO m, IsSequence rs, r ~ Element rs) => RunOpts m a -> ParallelOpts m a -> (Int -> m rs) -> a -> Opto (StateT rs m) v r a -> m a
-evalOptoParallelNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v () a -> m a
-optoConduitParallel :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
-optoConduitParallelChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
+optoFold' :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
+optoPar :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
+optoParChunk :: forall m v r a rs. (MonadUnliftIO m, IsSequence rs, r ~ Element rs) => RunOpts m a -> ParallelOpts m a -> (Int -> m rs) -> a -> Opto (StateT rs m) v r a -> m a
+optoParNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v () a -> m a
+optoConduitPar :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
+optoConduitParChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
 mean :: (Foldable1 t, Fractional a) => t a -> a
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
