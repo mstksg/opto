@@ -229,6 +229,7 @@ RO :: (Diff a -> a -> m Bool) -> (a -> m ()) -> Maybe Int -> Int -> Maybe Int ->
 
 -- | batches per report (Nothing = never report) (default = Just 1).
 [roFreq] :: RunOpts m a -> Maybe Int
+hoistRunOpts :: (forall x. m x -> n x) -> RunOpts m a -> RunOpts n a
 
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
@@ -241,20 +242,24 @@ runOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, O
 evalOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
 runOptoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
 evalOptoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
-optoConduit :: Monad m => RunOpts (ConduitT r a m) a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
-optoConduit_ :: Monad m => RunOpts (ConduitT r a m) a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
+optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
+optoConduit_ :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
 
 -- | <tt>runOptoSample</tt> specialized for <tt>FoldSampleT</tt>: give it a
 --   collection of items <tt>rs</tt>, and it will process each item
 --   <tt>r</tt>. Returns the optimized <tt>a</tt>, the leftover
 --   <tt>rs</tt>, and a closure <a>Opto</a> that can be resumed.
-foldOpto :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts (StateT rs m) a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
-foldOpto_ :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts (StateT rs m) a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
+foldOpto :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
+foldOpto_ :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
 evalOptoParallel :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> m (Maybe r) -> a -> Opto m v r a -> m a
+evalOptoParallelChunk :: forall m v r a rs. (MonadUnliftIO m, Fractional a, IsSequence rs, r ~ Element rs) => RunOpts m a -> ParallelOpts -> (Int -> m rs) -> a -> Opto (StateT rs m) v r a -> m a
+optoConduitParallel :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
+optoConduitParallelChunk :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
 instance Data.Default.Class.Default Numeric.Opto.Run.ParallelOpts
 instance GHC.Base.Applicative m => Data.Default.Class.Default (Numeric.Opto.Run.RunOpts m a)
+instance Data.Functor.Contravariant.Contravariant (Numeric.Opto.Run.RunOpts m)
 
 module Numeric.Opto.Optimizer
 steepestDescent :: ScalingInPlace m v c a => c -> Grad m r a -> Opto m v r a
