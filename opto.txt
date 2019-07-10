@@ -202,6 +202,7 @@ type Diff a = a
 type Grad m r a = r -> a -> m (Diff a)
 data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type
 [MkOpto] :: forall s u m v r a c. (ScalingInPlace m v c a, Ref m s u) => {oInit :: !s, oUpdate :: !u -> r -> a -> m (c, Diff a)} -> Opto m v r a
+mapSample :: (r -> s) -> Opto m v s a -> Opto m v r a
 fromCopying :: (PrimMonad m, ScalingInPlace m v c a) => s -> (r -> a -> s -> m (c, Diff a, s)) -> Opto m v r a
 fromStateless :: ScalingInPlace m v c a => (r -> a -> m (c, Diff a)) -> Opto m v r a
 pureGrad :: Applicative m => (r -> a -> Diff a) -> Grad m r a
@@ -232,12 +233,17 @@ RO :: (Diff a -> a -> m Bool) -> (a -> m ()) -> Maybe Int -> Int -> Maybe Int ->
 hoistRunOpts :: (forall x. m x -> n x) -> RunOpts m a -> RunOpts n a
 
 -- | Options for running an optimizer in a concurrent setting.
-data ParallelOpts
-PO :: Maybe Int -> Int -> ParallelOpts
+data ParallelOpts m a
+PO :: Maybe Int -> Int -> (NonEmpty a -> m a) -> ParallelOpts m a
 
 -- | Number of threads (Nothing = max capacity) (default = Nothing)
-[poThreads] :: ParallelOpts -> Maybe Int
-[poSplit] :: ParallelOpts -> Int
+[poThreads] :: ParallelOpts m a -> Maybe Int
+
+-- | How to recombine a pool of updated results into a single result
+--   (default = <tt><a>pure</a> <a>.</a> <a>mean</a></tt>)
+[poSplit] :: ParallelOpts m a -> Int
+[poCombine] :: ParallelOpts m a -> NonEmpty a -> m a
+hoistParallelOpts :: (forall x. m x -> n x) -> ParallelOpts m a -> ParallelOpts n a
 runOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
 evalOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
 runOptoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
@@ -251,15 +257,19 @@ optoConduit_ :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> Co
 --   <tt>rs</tt>, and a closure <a>Opto</a> that can be resumed.
 foldOpto :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
 foldOpto_ :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts m a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
-evalOptoParallel :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> m (Maybe r) -> a -> Opto m v r a -> m a
-evalOptoParallelChunk :: forall m v r a rs. (MonadUnliftIO m, Fractional a, IsSequence rs, r ~ Element rs) => RunOpts m a -> ParallelOpts -> (Int -> m rs) -> a -> Opto (StateT rs m) v r a -> m a
-optoConduitParallel :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
-optoConduitParallelChunk :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
+evalOptoParallel :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
+evalOptoParallelChunk :: forall m v r a rs. (MonadUnliftIO m, IsSequence rs, r ~ Element rs) => RunOpts m a -> ParallelOpts m a -> (Int -> m rs) -> a -> Opto (StateT rs m) v r a -> m a
+evalOptoParallelNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v () a -> m a
+optoConduitParallel :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
+optoConduitParallelChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
+mean :: (Foldable1 t, Fractional a) => t a -> a
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
 instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
-instance Data.Default.Class.Default Numeric.Opto.Run.ParallelOpts
+instance (GHC.Base.Applicative m, GHC.Real.Fractional a) => Data.Default.Class.Default (Numeric.Opto.Run.ParallelOpts m a)
+instance GHC.Base.Functor m => Data.Functor.Invariant.Invariant (Numeric.Opto.Run.ParallelOpts m)
 instance GHC.Base.Applicative m => Data.Default.Class.Default (Numeric.Opto.Run.RunOpts m a)
 instance Data.Functor.Contravariant.Contravariant (Numeric.Opto.Run.RunOpts m)
+instance Data.Functor.Invariant.Invariant (Numeric.Opto.Run.RunOpts m)
 
 module Numeric.Opto.Optimizer
 steepestDescent :: ScalingInPlace m v c a => c -> Grad m r a -> Opto m v r a
