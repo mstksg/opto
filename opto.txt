@@ -215,29 +215,28 @@ module Numeric.Opto.Run
 -- | Options for running an optimizer.
 data RunOpts m a
 RO :: (Diff a -> a -> m Bool) -> (a -> m ()) -> Maybe Int -> Int -> Maybe Int -> RunOpts m a
+
+-- | Stop condition; will stop when <a>True</a> (default = never stop)
 [roStopCond] :: RunOpts m a -> Diff a -> a -> m Bool
 
--- | reporting function
+-- | Reporting function (default = no report)
 [roReport] :: RunOpts m a -> a -> m ()
 
--- | number of batches to run (Nothing = run forever)
+-- | number of batches to run (Nothing = run forever) (default = Nothing) |
+--   Size of batching updates (1 = no batching) (default = 1)
 [roLimit] :: RunOpts m a -> Maybe Int
-
--- | batching updates
 [roBatch] :: RunOpts m a -> Int
 
--- | batches per report (Nothing = never report)
+-- | batches per report (Nothing = never report) (default = Just 1).
 [roFreq] :: RunOpts m a -> Maybe Int
 
 -- | Options for running an optimizer in a concurrent setting.
 data ParallelOpts
 PO :: Maybe Int -> Int -> ParallelOpts
 
--- | Number of threads. Will default to max capacity
+-- | Number of threads (Nothing = max capacity) (default = Nothing)
 [poThreads] :: ParallelOpts -> Maybe Int
-
--- | How much each thread will process before regrouping
-[poSplitRuns] :: ParallelOpts -> Int
+[poSplit] :: ParallelOpts -> Int
 runOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
 evalOpto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
 runOptoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
@@ -251,6 +250,10 @@ optoConduit_ :: Monad m => RunOpts (ConduitT r a m) a -> a -> Opto (ConduitT r a
 --   <tt>rs</tt>, and a closure <a>Opto</a> that can be resumed.
 foldOpto :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts (StateT rs m) a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs, Opto (StateT rs m) v r a)
 foldOpto_ :: (Monad m, IsSequence rs, r ~ Element rs) => RunOpts (StateT rs m) a -> a -> Opto (StateT rs m) v r a -> rs -> m (a, rs)
+evalOptoParallel :: forall m v r a. (MonadUnliftIO m, Fractional a) => RunOpts m a -> ParallelOpts -> m (Maybe r) -> a -> Opto m v r a -> m a
+instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Semigroup (Numeric.Opto.Run.Sum2 a b)
+instance (GHC.Num.Num a, GHC.Num.Num b) => GHC.Base.Monoid (Numeric.Opto.Run.Sum2 a b)
+instance Data.Default.Class.Default Numeric.Opto.Run.ParallelOpts
 instance GHC.Base.Applicative m => Data.Default.Class.Default (Numeric.Opto.Run.RunOpts m a)
 
 module Numeric.Opto.Optimizer
