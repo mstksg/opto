@@ -23,18 +23,24 @@ module Numeric.Opto.Run (
     RunOpts(..)
   , hoistRunOpts
   , ParallelOpts(..)
+  , hoistParallelOpts
   -- * Single-threaded
-  , runOpto, evalOpto
-  , runOptoNonSampling, evalOptoNonSampling
+  , runOpto
+  , evalOpto
+  , runOptoNonSampling
+  , evalOptoNonSampling
   -- ** Sampling methods
   , optoConduit, optoConduit_
   , foldOpto, foldOpto_
   -- * Parallel
   , evalOptoParallel
   , evalOptoParallelChunk
+  , evalOptoParallelNonSampling
   -- ** Sampling Methods
   , optoConduitParallel
   , optoConduitParallelChunk
+  -- * Util
+  , mean
   ) where
 
 import           Control.Applicative
@@ -47,6 +53,8 @@ import           Data.Conduit.TQueue
 import           Data.Default
 import           Data.Functor
 import           Data.Functor.Contravariant
+import           Data.Functor.Invariant
+import           Data.List.NonEmpty              (NonEmpty(..))
 import           Data.Maybe
 import           Data.MonoTraversable
 import           Data.Semigroup.Foldable
@@ -79,11 +87,14 @@ data RunOpts m a = RO
     }
 
 -- | Options for running an optimizer in a concurrent setting.
-data ParallelOpts = PO
+data ParallelOpts m a = PO
     { -- | Number of threads (Nothing = max capacity) (default = Nothing)
-      poThreads   :: Maybe Int
+      poThreads :: Maybe Int
       -- ^ How many batches thread will process before regrouping (default = 1000)
-    , poSplit :: Int
+    , poSplit   :: Int
+      -- ^ How to recombine a pool of updated results into a single result
+      -- (default = @'pure' '.' 'mean'@)
+    , poCombine :: NonEmpty a -> m a
     }
 
 instance Applicative m => Default (RunOpts m a) where
@@ -95,17 +106,26 @@ instance Applicative m => Default (RunOpts m a) where
       , roFreq     = Just 1
       }
 
-instance Default ParallelOpts where
+instance (Applicative m, Fractional a) => Default (ParallelOpts m a) where
     def = PO
       { poThreads = Nothing
       , poSplit   = 1000
+      , poCombine = pure . mean
       }
 
 instance Contravariant (RunOpts m) where
     contramap f ro = ro
-        { roStopCond = \d -> roStopCond ro (f d) . f
-        , roReport   = roReport ro . f
-        }
+      { roStopCond = \d -> roStopCond ro (f d) . f
+      , roReport   = roReport ro . f
+      }
+
+instance Invariant (RunOpts m) where
+    invmap _ g = contramap g
+
+instance Functor m => Invariant (ParallelOpts m) where
+    invmap f g po = po
+      { poCombine = fmap f . poCombine po . fmap g
+      }
 
 hoistRunOpts
     :: (forall x. m x -> n x)
@@ -114,6 +134,14 @@ hoistRunOpts
 hoistRunOpts f ro = ro
     { roStopCond = \d -> f . roStopCond ro d
     , roReport   = f . roReport ro
+    }
+
+hoistParallelOpts
+    :: (forall x. m x -> n x)
+    -> ParallelOpts m a
+    -> ParallelOpts n a
+hoistParallelOpts f po = po
+    { poCombine = f . poCombine po
     }
 
 runOpto
@@ -287,9 +315,9 @@ sampleState = state $ \xs -> case O.uncons xs of
 {-# INLINE sampleState #-}
 
 evalOptoParallel
-    :: forall m v r a. (MonadUnliftIO m, Fractional a)
+    :: forall m v r a. MonadUnliftIO m
     => RunOpts m a
-    -> ParallelOpts
+    -> ParallelOpts m a
     -> m (Maybe r)
     -> a
     -> Opto m v r a
@@ -320,7 +348,7 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
           readIORef hitStop >>= \case
             Nothing    -> case NE.nonEmpty xs of
               Just xs' -> do
-                let !x' = mean xs'
+                !x' <- poCombine xs'
                 when (reportCheck i) $
                   roReport x'
                 loop x' (i + 1)
@@ -332,11 +360,22 @@ evalOptoParallel ro@RO{..} PO{..} sampler x0 o = do
     getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
       Nothing -> pure (0, fromIntegral n)
       Just g  -> pure (g, poSplit       )
+{-# INLINE evalOptoParallel #-}
+
+evalOptoParallelNonSampling
+    :: MonadUnliftIO m
+    => RunOpts m a
+    -> ParallelOpts m a
+    -> a
+    -> Opto m v () a
+    -> m a
+evalOptoParallelNonSampling ro po = evalOptoParallel ro po (pure (Just ()))
+{-# INLINE evalOptoParallelNonSampling #-}
 
 evalOptoParallelChunk
-    :: forall m v r a rs. (MonadUnliftIO m, Fractional a, O.IsSequence rs, r ~ Element rs)
+    :: forall m v r a rs. (MonadUnliftIO m, O.IsSequence rs, r ~ Element rs)
     => RunOpts m a
-    -> ParallelOpts
+    -> ParallelOpts m a
     -> (Int -> m rs)
     -> a
     -> Opto (StateT rs m) v r a
@@ -368,7 +407,7 @@ evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
           readIORef hitStop >>= \case
             Nothing    -> case NE.nonEmpty xs of
               Just xs' -> do
-                let !x' = mean xs'
+                !x' <- poCombine xs'
                 when (reportCheck i) $
                   roReport x'
                 loop x' (i + 1)
@@ -380,11 +419,12 @@ evalOptoParallelChunk ro@RO{..} PO{..} sampler x0 o = do
     getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral poSplit of
       Nothing -> pure (0, fromIntegral n)
       Just g  -> pure (g, poSplit       )
+{-# INLINE evalOptoParallelChunk #-}
 
 optoConduitParallel
-    :: forall m v r a. (MonadUnliftIO m, Fractional a)
+    :: forall m v r a. MonadUnliftIO m
     => RunOpts m a
-    -> ParallelOpts
+    -> ParallelOpts m a
     -> a
     -> Opto m v r a
     -> ConduitT () r m ()
@@ -414,11 +454,12 @@ optoConduitParallel ro po x0 o src = do
           unless done loop
 
     loop
+{-# INLINE optoConduitParallel #-}
 
 optoConduitParallelChunk
-    :: forall m v r a. (MonadUnliftIO m, Fractional a)
+    :: forall m v r a. MonadUnliftIO m
     => RunOpts m a
-    -> ParallelOpts
+    -> ParallelOpts m a
     -> a
     -> Opto (StateT [r] m) v r a
     -> ConduitT () r m ()
@@ -448,6 +489,7 @@ optoConduitParallelChunk ro po x0 o src = do
           C.yield r
           unless done loop
     loop
+{-# INLINE optoConduitParallelChunk #-}
 
 mean :: (Foldable1 t, Fractional a) => t a -> a
 mean = go . foldMap1 (`Sum2` 1)
