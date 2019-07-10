@@ -240,9 +240,12 @@ PO :: Maybe Int -> Int -> (NonEmpty a -> m a) -> ParallelOpts m a
 -- | Number of threads (Nothing = max capacity) (default = Nothing)
 [poThreads] :: ParallelOpts m a -> Maybe Int
 
+-- | How many batches thread will process before regrouping (default =
+--   1000)
+[poSplit] :: ParallelOpts m a -> Int
+
 -- | How to recombine a pool of updated results into a single result
 --   (default = <tt><a>pure</a> <a>.</a> <a>mean</a></tt>)
-[poSplit] :: ParallelOpts m a -> Int
 [poCombine] :: ParallelOpts m a -> NonEmpty a -> m a
 hoistParallelOpts :: (forall x. m x -> n x) -> ParallelOpts m a -> ParallelOpts n a
 opto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
