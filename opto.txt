@@ -566,16 +566,46 @@ newtype Momentum c
 Momentum :: c -> Momentum c
 [momentumDecay] :: Momentum c -> c
 
--- | Steepest descent with momentum.
-momentum :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a) => Momentum c -> c -> Grad m r a -> Opto m v r a
+-- | Steepest descent with momentum. (Qian, 1999)
+momentum :: forall m v r a c. LinearInPlace m v c a => Momentum c -> c -> Grad m r a -> Opto m v r a
 
 -- | Hyperparameter for <a>nesterov</a>
 newtype Nesterov c
 Nesterov :: c -> Nesterov c
 [nesterovDecay] :: Nesterov c -> c
 
--- | Nesterov accelerated gradient (NAG)
-nesterov :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a) => Nesterov c -> c -> Grad m r a -> Opto m v r a
+-- | Nesterov accelerated gradient (NAG) (Nesterov, 1983)
+nesterov :: forall m v r a c. LinearInPlace m v c a => Nesterov c -> c -> Grad m r a -> Opto m v r a
+
+-- | Hyperparameters for <a>adagrad</a>
+data Adagrad c
+Adagrad :: c -> c -> Adagrad c
+[adagradRate] :: Adagrad c -> c
+[adagradEps] :: Adagrad c -> c
+
+-- | Adaptive Gradient (Duchu, Hazan, Singer, 2011). Note that if the state
+--   is not reset periodically, updates tend to zero fairly quickly.
+adagrad :: forall m v r a c. (LinearInPlace m v c a, Floating a, Real c) => Adagrad c -> Grad m r a -> Opto m v r a
+
+-- | Hyperparameters for <a>adadelta</a>
+data Adadelta c
+Adadelta :: c -> c -> Adadelta c
+[adadeltaDecay] :: Adadelta c -> c
+[adadeltaEps] :: Adadelta c -> c
+
+-- | The Adadelta extension of Adagrad (Zeiler, 2012) that mitigates the
+--   decreasing learning rate.
+adadelta :: forall m v r a c. (LinearInPlace m v c a, Floating a, Real c) => Adadelta c -> Grad m r a -> Opto m v r a
+
+-- | Hyperparameters for <a>rmsProp</a>
+data RMSProp c
+RMSProp :: c -> c -> c -> RMSProp c
+[rmsPropRate] :: RMSProp c -> c
+[rmsPropDecay] :: RMSProp c -> c
+[rmsPropEps] :: RMSProp c -> c
+
+-- | RMSProp, as described by Geoff Hinton.
+rmsProp :: forall m v r a c. (LinearInPlace m v c a, Floating a, Real c) => RMSProp c -> Grad m r a -> Opto m v r a
 
 -- | Hyperparameters for <a>adam</a>
 data Adam c
@@ -583,9 +613,9 @@ Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamStep] :: Adam c -> !c
 [adamDecay1] :: Adam c -> !c
 [adamDecay2] :: Adam c -> !c
-[adamEpsilon] :: Adam c -> !c
+[adamEps] :: Adam c -> !c
 
--- | Adaptive Moment Estimation
+-- | Adaptive Moment Estimation (Kingma, Ba, 2015)
 adam :: forall m v r a c. (RealFloat c, Floating a, LinearInPlace m v c a, PrimMonad m) => Adam c -> Grad m r a -> Opto m v r a
 
 -- | Hyperparameters for <a>adaMax</a>
@@ -594,7 +624,7 @@ AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxStep] :: AdaMax c -> !c
 [adaMaxDecay1] :: AdaMax c -> !c
 [adaMaxDecay2] :: AdaMax c -> !c
-[adaMaxEpsilon] :: AdaMax c -> !c
+[adaMaxEps] :: AdaMax c -> !c
 
 -- | Adam variation (Kingma and Ba, 2015)
 adaMax :: forall m v r a c. (RealFloat c, Metric c a, LinearInPlace m v c a, PrimMonad m) => AdaMax c -> Grad m r a -> Opto m v r a
@@ -602,12 +632,21 @@ instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adam c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Adam c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.RMSProp c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.RMSProp c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adadelta c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Adadelta c)
+instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adagrad c)
+instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Adagrad c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Nesterov c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Nesterov c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Momentum c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.Momentum c)
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Adam c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.RMSProp c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Adadelta c)
+instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Adagrad c)
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Nesterov c)
 instance GHC.Real.Fractional c => Data.Default.Class.Default (Numeric.Opto.Optimizer.Momentum c)
 
