@@ -18,7 +18,7 @@
 -- Stability   : experimental
 -- Portability : non-portable
 --
--- Functions to /run/ optimiziers.
+-- Functions to run optimiziers.
 module Numeric.Opto.Run (
   -- * Options
     RunOpts(..)
@@ -240,7 +240,7 @@ data OptoLoop m v r a c = OL
     }
 
 optoLoop
-    :: forall m v r a c. (Monad m, Scaling c a)
+    :: forall m v r a c. (Monad m, Linear c a)
     => OptoLoop m v r a c
     -> m ()
 optoLoop OL{..} = go 0
@@ -267,10 +267,10 @@ optoLoop OL{..} = go 0
       | otherwise    = batchLoop
     batchSingle !x = lift . (`olUpdateState` x) =<< MaybeT olSample
     batchLoop !x = do
-      v <- olInitialize addZero
+      v <- olInitialize zeroL
       k <- fmap isNothing . runMaybeT . replicateM olBatch $
           lift . olUpdate v =<< batchSingle x
-      (k,) . Just . (scaleOne @c @a,) <$> olRead v
+      (k,) . Just . (1 :: c,) <$> olRead v
 {-# INLINE optoLoop #-}
 
 -- | Given an optimizer and some initial value, produce a 'ConduitT' that

@@ -79,7 +79,9 @@ parseOMode = subparser
 
 parseOpts :: Parser Opts
 parseOpts = Opts
-    <$> strArgument ( help "Data directory" <> metavar "DIR" )
+    <$> strArgument ( help "Data directory (containing uncompressed MNIST data set)"
+                   <> metavar "DIR"
+                    )
     <*> option auto
           ( long "report"
          <> short 'r'
@@ -107,11 +109,8 @@ data Net = N { _weights1 :: !(L 250 784)
   deriving (Num, Fractional, Floating) via (GNum Net)
 makeLenses ''Net
 
-instance Additive Net
-instance Scaling Double Net where
-    x .* n = realToFrac x * n
-instance Ref m Net v => AdditiveInPlace m v Net
-instance Ref m Net v => ScalingInPlace m v Double Net
+instance Linear Double Net
+instance Ref m Net v => LinearInPlace m v Double Net
 
 logistic :: Floating a => a -> a
 logistic x = 1 / (1 + exp (-x))

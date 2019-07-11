@@ -34,7 +34,7 @@ type Diff     a = a
 type Grad m r a = r -> a -> m (Diff a)
 
 data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type where
-    MkOpto :: forall s u m v r a c. (ScalingInPlace m v c a, Ref m s u)
+    MkOpto :: forall s u m v r a c. (LinearInPlace m v c a, Ref m s u)
            => { oInit   :: !s
               , oUpdate :: !( u
                            -> r
@@ -54,7 +54,7 @@ mapSample f MkOpto{..} = MkOpto
     }
 
 fromCopying
-    :: (PrimMonad m, ScalingInPlace m v c a)
+    :: (PrimMonad m, LinearInPlace m v c a)
     => s
     -> (r -> a -> s -> m (c, Diff a, s))
     -> Opto m v r a
@@ -67,7 +67,7 @@ fromCopying s0 update = MkOpto
     }
 
 fromStateless
-    :: (ScalingInPlace m v c a)
+    :: (LinearInPlace m v c a)
     => (r -> a -> m (c, Diff a))
     -> Opto m v r a
 fromStateless update = MkOpto

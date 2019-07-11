@@ -25,7 +25,7 @@ import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
 steepestDescent
-    :: ScalingInPlace m v c a
+    :: LinearInPlace m v c a
     => c                          -- ^ learning rate
     -> Grad m r a                 -- ^ gradient
     -> Opto m v r a
@@ -42,12 +42,12 @@ instance Fractional c => Default (Momentum c) where
     def = Momentum { momentumDecay = 0.9 }
 
 momentum
-    :: forall m v r a c. (PrimMonad m, ScalingInPlace m v c a)
+    :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a)
     => Momentum c        -- ^ configuration
     -> c                 -- ^ learning rate
     -> Grad m r a        -- ^ gradient
     -> Opto m v r a
-momentum Momentum{..} lr gr = fromCopying (addZero @a) $ \r x v -> do
+momentum Momentum{..} lr gr = fromCopying (zeroL @c @a) $ \r x v -> do
     !g <- gr r x
     let !v' = (momentumDecay .* v) .+. (lr .* g)
     pure (-1, v', v')
@@ -61,12 +61,12 @@ instance Fractional c => Default (Nesterov c) where
     def = Nesterov { nesterovDecay = 0.9 }
 
 nesterov
-    :: forall m v r a c. (PrimMonad m, ScalingInPlace m v c a)
+    :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a)
     => Nesterov c       -- ^ configuration
     -> c                -- ^ learning rate
     -> Grad m r a       -- ^ gradient
     -> Opto m v r a
-nesterov Nesterov{..} lr gr = fromCopying (addZero @a) $ \r x v -> do
+nesterov Nesterov{..} lr gr = fromCopying (zeroL @c @a) $ \r x v -> do
     let !vDecay = nesterovDecay .* v
     !g <- gr r (x .+. ((-1) .* vDecay))
     let !v' = vDecay .+. (lr .* g)
@@ -91,14 +91,14 @@ adam
     :: forall m v r a c.
      ( RealFloat c
      , Floating a
-     , ScalingInPlace m v c a
+     , LinearInPlace m v c a
      , PrimMonad m
      )
     => Adam c               -- ^ configuration
     -> Grad m r a           -- ^ gradient
     -> Opto m v r a
 adam Adam{..} gr = MkOpto
-    { oInit   = (1, addZero, addZero) :: (c, a, a)
+    { oInit   = (1, zeroL, zeroL) :: (c, a, a)
     , oUpdate = \( rT :: MutVar (PrimState m) c
                  , rM :: v
                  , rV :: v
@@ -137,14 +137,14 @@ adaMax
     :: forall m v r a c.
      ( RealFloat c
      , Metric c a
-     , ScalingInPlace m v c a
+     , LinearInPlace m v c a
      , PrimMonad m
      )
     => AdaMax c             -- ^ configuration
     -> Grad m r a           -- ^ gradient
     -> Opto m v r a
 adaMax AdaMax{..} gr = MkOpto
-    { oInit   = (1, addZero, 0) :: (c, a, c)
+    { oInit   = (1, zeroL, 0) :: (c, a, c)
     , oUpdate = \( rT :: MutVar (PrimState m) c
                  , rM :: v
                  , rU :: MutVar (PrimState m) c
