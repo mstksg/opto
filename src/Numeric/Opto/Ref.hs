@@ -47,13 +47,11 @@ class Monad m => Ref m a v | v -> a where
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference.
     modifyRef  :: v -> (a -> a) -> m ()
-    modifyRef v f = copyRef v . f =<< freezeRef v
+    modifyRef v f = updateRef v ((,()) . f)
     -- | 'modifyRef', but forces the result before storing it back in the
     -- reference.
     modifyRef' :: v -> (a -> a) -> m ()
-    modifyRef' v f = do
-      x <- f <$> freezeRef v
-      x `seq` copyRef v x
+    modifyRef' v f = updateRef' v ((,()) . f)
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference, returning a result value from that function.
     updateRef  :: v -> (a -> (a, b)) -> m b
