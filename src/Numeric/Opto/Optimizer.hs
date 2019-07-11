@@ -22,6 +22,9 @@ module Numeric.Opto.Optimizer (
     steepestDescent
   , Momentum(..), momentum
   , Nesterov(..), nesterov
+  , Adagrad(..), adagrad
+  , Adadelta(..), adadelta
+  , RMSProp(..), rmsProp
   , Adam(..), adam
   , AdaMax(..), adaMax
   ) where
@@ -53,17 +56,22 @@ newtype Momentum c = Momentum
 instance Fractional c => Default (Momentum c) where
     def = Momentum { momentumDecay = 0.9 }
 
--- | Steepest descent with momentum.
+-- | Steepest descent with momentum. (Qian, 1999)
 momentum
-    :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a)
+    :: forall m v r a c. LinearInPlace m v c a
     => Momentum c        -- ^ configuration
     -> c                 -- ^ learning rate
     -> Grad m r a        -- ^ gradient
     -> Opto m v r a
-momentum Momentum{..} lr gr = fromCopying (zeroL @c @a) $ \r x v -> do
-    !g <- gr r x
-    let !v' = (momentumDecay .* v) .+. (lr .* g)
-    pure (-1, v', v')
+momentum Momentum{..} lr gr = MkOpto
+    { oInit   = zeroL :: a
+    , oUpdate = \(rV :: v) r x -> do
+        !g <- gr r x
+        rV  .*= momentumDecay
+        rV .*+= (lr, g)
+        v  <- freezeRef rV
+        pure ( -1, v )
+    }
 
 -- | Hyperparameter for 'nesterov'
 newtype Nesterov c = Nesterov
@@ -74,36 +82,162 @@ newtype Nesterov c = Nesterov
 instance Fractional c => Default (Nesterov c) where
     def = Nesterov { nesterovDecay = 0.9 }
 
--- | Nesterov accelerated gradient (NAG)
+-- | Nesterov accelerated gradient (NAG) (Nesterov, 1983)
 nesterov
-    :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a)
+    :: forall m v r a c. LinearInPlace m v c a
     => Nesterov c       -- ^ configuration
     -> c                -- ^ learning rate
     -> Grad m r a       -- ^ gradient
     -> Opto m v r a
-nesterov Nesterov{..} lr gr = fromCopying (zeroL @c @a) $ \r x v -> do
-    let !vDecay = nesterovDecay .* v
-    !g <- gr r (x .+. ((-1) .* vDecay))
-    let !v' = vDecay .+. (lr .* g)
-    pure (-1, v', v')
+nesterov Nesterov{..} lr gr = MkOpto
+    { oInit   = zeroL :: a
+    , oUpdate = \(rV :: v) r x -> do
+        rV  .*= nesterovDecay
+        !v <- freezeRef rV
+        !g <- gr r (x .+. ((-1) .* v))
+        rV .*+= (lr, g)
+        !w <- freezeRef rV
+        pure ( -1, w )
+    }
+        
+-- | Hyperparameters for 'adagrad'
+data Adagrad c = Adagrad
+    { adagradRate :: c
+    , adagradEps  :: c
+    }
+  deriving (Show, Eq)
+
+instance Fractional c => Default (Adagrad c) where
+    def = Adagrad
+      { adagradRate = 0.01
+      , adagradEps  = 1e-8
+      }
+
+-- | Adaptive Gradient (Duchu, Hazan, Singer, 2011).  Note that if the
+-- state is not reset periodically, updates tend to zero fairly quickly.
+adagrad
+    :: forall m v r a c.
+     ( LinearInPlace m v c a
+     , Floating a
+     , Real c
+     )
+    => Adagrad c
+    -> Grad m r a
+    -> Opto m v r a
+adagrad Adagrad{..} gr = MkOpto
+    { oInit   = zeroL :: a
+    , oUpdate = \(rBigG :: v) r x -> do
+        !g <- gr r x
+        rBigG .+.= (g ** 2)
+        !bigG <- freezeRef rBigG
+        pure ( - adagradRate
+             , g / sqrt (bigG + eps)
+             )
+    }
+  where
+    eps = realToFrac adagradEps
+
+-- | Hyperparameters for 'adadelta'
+data Adadelta c = Adadelta
+    { adadeltaDecay :: c
+    , adadeltaEps   :: c
+    }
+  deriving (Show, Eq)
+
+instance Fractional c => Default (Adadelta c) where
+    def = Adadelta
+      { adadeltaDecay = 0.9
+      , adadeltaEps   = 1e-8
+      }
+
+-- | The Adadelta extension of Adagrad (Zeiler, 2012) that mitigates the
+-- decreasing learning rate.
+adadelta
+    :: forall m v r a c.
+     ( LinearInPlace m v c a
+     , Floating a
+     , Real c
+     )
+    => Adadelta c
+    -> Grad m r a
+    -> Opto m v r a
+adadelta Adadelta{..} gr = MkOpto
+    { oInit   = (zeroL, zeroL) :: (a, a)
+    , oUpdate = \(rDeltHist :: v, rGradHist :: v) r x -> do
+        !g        <- gr r x
+        !deltHist <- freezeRef rDeltHist
+
+        rGradHist  .*= adadeltaDecay
+        rGradHist .*+= (complDecay, g ** 2)
+        !gradHist <- freezeRef rGradHist
+
+        let negaDelt = (sqrt (deltHist + eps) / sqrt (gradHist + eps)) * g
+        rDeltHist  .*= adadeltaDecay
+        rDeltHist .*+= (complDecay, negaDelt ** 2)
+
+        pure ( -1, negaDelt )
+    }
+  where
+    eps = realToFrac adadeltaEps
+    complDecay = 1 - adadeltaDecay
+
+-- | Hyperparameters for 'rmsProp'
+data RMSProp c = RMSProp
+    { rmsPropRate  :: c
+    , rmsPropDecay :: c
+    , rmsPropEps   :: c
+    }
+  deriving (Show, Eq)
+
+instance Fractional c => Default (RMSProp c) where
+    def = RMSProp
+      { rmsPropRate  = 0.001
+      , rmsPropDecay = 0.9
+      , rmsPropEps   = 1e-8
+      }
+
+-- | RMSProp, as described by Geoff Hinton.
+rmsProp
+    :: forall m v r a c.
+     ( LinearInPlace m v c a
+     , Floating a
+     , Real c
+     )
+    => RMSProp c
+    -> Grad m r a
+    -> Opto m v r a
+rmsProp RMSProp{..} gr = MkOpto
+    { oInit   = zeroL :: a
+    , oUpdate = \(rGradHist :: v) r x -> do
+        !g <- gr r x
+        rGradHist  .*= rmsPropDecay
+        rGradHist .*+= (complDecay, g ** 2)
+        !gradHist <- freezeRef rGradHist
+        pure ( - rmsPropRate
+             , g / sqrt (gradHist + eps)
+             )
+    }
+  where
+    eps = realToFrac rmsPropEps
+    complDecay = 1 - rmsPropDecay
 
 -- | Hyperparameters for 'adam'
 data Adam c = Adam
     { adamStep    :: !c
     , adamDecay1  :: !c
     , adamDecay2  :: !c
-    , adamEpsilon :: !c
+    , adamEps :: !c
     }
   deriving (Show, Eq)
 
 instance Fractional c => Default (Adam c) where
-    def = Adam { adamStep    = 0.001
-               , adamDecay1  = 0.9
-               , adamDecay2  = 0.999
-               , adamEpsilon = 1e-8
+    def = Adam { adamStep   = 0.001
+               , adamDecay1 = 0.9
+               , adamDecay2 = 0.999
+               , adamEps    = 1e-8
                }
 
--- | Adaptive Moment Estimation
+-- | Adaptive Moment Estimation (Kingma, Ba, 2015)
 adam
     :: forall m v r a c.
      ( RealFloat c
@@ -120,9 +254,9 @@ adam Adam{..} gr = MkOpto
                  , rM :: v
                  , rV :: v
                  ) r x -> do
+        !g <- gr r x
         rM .*= adamDecay1
         rV .*= adamDecay2
-        !g <- gr r x
         rM .*+= (1 - adamDecay1, g)
         rV .*+= (1 - adamDecay2, g * g)
         (!m, !v) <- freezeRef (rM, rV)
@@ -131,7 +265,7 @@ adam Adam{..} gr = MkOpto
         let !mHat = recip (1 - adamDecay1 ** t) .* m
             !vHat = recip (1 - adamDecay2 ** t) .* v
         return ( -adamStep
-               , mHat / (sqrt vHat + realToFrac adamEpsilon)
+               , mHat / (sqrt vHat + realToFrac adamEps)
                )
     }
 
@@ -140,15 +274,15 @@ data AdaMax c = AdaMax
     { adaMaxStep    :: !c
     , adaMaxDecay1  :: !c
     , adaMaxDecay2  :: !c
-    , adaMaxEpsilon :: !c
+    , adaMaxEps :: !c
     }
   deriving (Show, Eq)
 
 instance Fractional c => Default (AdaMax c) where
-    def = AdaMax { adaMaxStep    = 0.002
-                 , adaMaxDecay1  = 0.9
-                 , adaMaxDecay2  = 0.999
-                 , adaMaxEpsilon = 1e-8
+    def = AdaMax { adaMaxStep   = 0.002
+                 , adaMaxDecay1 = 0.9
+                 , adaMaxDecay2 = 0.999
+                 , adaMaxEps    = 1e-8
                  }
 
 -- | Adam variation (Kingma and Ba, 2015)
@@ -168,8 +302,8 @@ adaMax AdaMax{..} gr = MkOpto
                  , rM :: v
                  , rU :: MutVar (PrimState m) c
                  ) r x -> do
-        rM .*= adaMaxDecay1
         !g <- gr r x
+        rM .*= adaMaxDecay1
         rM .*+= (1 - adaMaxDecay1, g)
         !t <- updateRef' rT $ \t0 ->
             let !t1 = t0 + 1
@@ -183,4 +317,4 @@ adaMax AdaMax{..} gr = MkOpto
                )
     }
 
--- TODO: RMSProp, AdaGrad, Nadam, AMSGrad
+-- TODO: RMSProp, Adadelta, Nadam, AMSGrad
