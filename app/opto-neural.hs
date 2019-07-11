@@ -175,18 +175,17 @@ main = MWC.withSystemRandom $ \g -> do
                (bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y))
 
         ro = def { roBatch = oBatch }
-        -- ro = def { roFreq  = Just 2500 }
-        -- po = def { poSplit = 750       }
 
         report b = do
           yield $ printf "(Batch %d)\n" (b :: Int)
           t0   <- liftIO getCurrentTime
+          _    <- liftIO . atomically $ flushTBQueue sampleQueue
           net' <- mapM (liftIO . evaluate . force) =<< await
+          chnk <- liftIO . atomically $ flushTBQueue sampleQueue
           t1   <- liftIO getCurrentTime
           case net' of
             Nothing  -> yield "Done!\n"
             Just net -> do
-              chnk <- liftIO . atomically $ flushTBQueue sampleQueue
               yield $ printf "Trained on %d points in %s.\n"
                              (length chnk)
                              (show (t1 `diffUTCTime` t0))
@@ -206,19 +205,18 @@ main = MWC.withSystemRandom $ \g -> do
                   .| forever (C.drop (oReport - 1) *> (mapM_ yield =<< await))
           OParallel c s ->
             let po      = def { poSplit = s }
-                skipAmt = max 0 $ (oReport `mod` (n * s)) - 1
+                skipAmt = max 0 $ (oReport `div` (n * s)) - 1
                 source'
                   | c         = optoConduitParChunk ro po net0 o source
                   | otherwise = optoConduitPar      ro po net0 o source
             in  source'
                   .| forever (C.drop skipAmt *> (mapM_ yield =<< await))
 
-    runConduit $
-            optimizer
-         .| mapM_ report [0..]
-         .| C.map T.pack
-         .| C.encodeUtf8
-         .| C.stdout
+    runConduit $ optimizer
+              .| mapM_ report [0..]
+              .| C.map T.pack
+              .| C.encodeUtf8
+              .| C.stdout
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
