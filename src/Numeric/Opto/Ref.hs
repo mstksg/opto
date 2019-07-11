@@ -24,6 +24,8 @@ module Numeric.Opto.Ref (
 
 import           Control.Monad.Primitive
 import           Data.Primitive.MutVar
+import           Data.Ratio
+import           Numeric.Natural
 import qualified Data.Vector               as V
 import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
@@ -35,15 +37,13 @@ import qualified Data.Vector.Mutable       as MV
 --
 -- This allows us to reat mutable vectors and in-place mutable numbers or
 -- records in the same way.
-class Monad m => Ref m a v | v -> a where
+class Monad m => Ref m a v | v -> a, m a -> v where
     -- | Initialize a mutable reference with a given value
     thawRef      :: a -> m v
     -- | Read an immutable value back from a mutable reference
     freezeRef    :: v -> m a
-    freezeRef v = updateRef v $ \x -> (x,x)
     -- | Copy an immutable value into a mutable reference
     copyRef   :: v -> a -> m ()
-    copyRef v x = modifyRef v (const x)
     -- | Apply a pure function on an immutable value onto a value stored in
     -- a mutable reference.
     modifyRef  :: v -> (a -> a) -> m ()
@@ -68,16 +68,30 @@ class Monad m => Ref m a v | v -> a where
         (x, y) <- f <$> freezeRef v
         x `seq` copyRef v x
         return y
-    {-# MINIMAL thawRef, (copyRef | updateRef, updateRef') #-}
 
-instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
-    thawRef    = newMutVar
-    freezeRef  = readMutVar
-    copyRef    = writeMutVar
-    modifyRef  = modifyMutVar
-    modifyRef' = modifyMutVar'
-    updateRef  = atomicModifyMutVar
-    updateRef' = atomicModifyMutVar'
+    default thawRef :: (PrimMonad m, v ~ MutVar (PrimState m) a) => a -> m v
+    thawRef = newMutVar
+    default freezeRef :: (PrimMonad m, v ~ MutVar (PrimState m) a) => v -> m a
+    freezeRef = readMutVar
+    default copyRef :: (PrimMonad m, v ~ MutVar (PrimState m) a) => v -> a -> m ()
+    copyRef = writeMutVar
+
+-- instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
+--     thawRef    = newMutVar
+--     freezeRef  = readMutVar
+--     copyRef    = writeMutVar
+--     modifyRef  = modifyMutVar
+--     modifyRef' = modifyMutVar'
+--     updateRef  = atomicModifyMutVar
+--     updateRef' = atomicModifyMutVar'
+
+instance (PrimMonad m, PrimState m ~ s) => Ref m Int (MutVar s Int)
+instance (PrimMonad m, PrimState m ~ s) => Ref m Integer (MutVar s Integer)
+instance (PrimMonad m, PrimState m ~ s) => Ref m Natural (MutVar s Natural)
+instance (PrimMonad m, PrimState m ~ s) => Ref m (Ratio a) (MutVar s (Ratio a))
+instance (PrimMonad m, PrimState m ~ s) => Ref m Float (MutVar s Float)
+instance (PrimMonad m, PrimState m ~ s) => Ref m Double (MutVar s Double)
+instance (PrimMonad m, PrimState m ~ s) => Ref m (Either a b) (MutVar s (Either a b))
 
 instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) where
     thawRef        = V.thaw

@@ -34,9 +34,7 @@ module Numeric.Opto.Core (
   , nonSampling, pureNonSampling
   ) where
 
-import           Control.Monad.Primitive
 import           Data.Kind
-import           Data.Primitive.MutVar
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
@@ -89,15 +87,15 @@ mapSample f MkOpto{..} = MkOpto
 -- The state is updated in a "copying" manner (by generating new values
 -- purely), without any in-place mutation.
 fromCopying
-    :: (PrimMonad m, LinearInPlace m v c a)
+    :: (LinearInPlace m v c a, Ref m s u)
     => s                                    -- ^ Initial state
     -> (r -> a -> s -> m (c, Diff a, s))    -- ^ State-updating function
     -> Opto m v r a
 fromCopying s0 update = MkOpto
     { oInit    = s0
     , oUpdate = \rS r x -> do
-        (c, g, s) <- update r x =<< readMutVar rS
-        writeMutVar rS s
+        (c, g, s) <- update r x =<< freezeRef rS
+        copyRef rS s
         return (c, g)
     }
 

@@ -29,9 +29,7 @@ module Numeric.Opto.Optimizer (
   , AdaMax(..), adaMax
   ) where
 
-import           Control.Monad.Primitive
 import           Data.Default
-import           Data.Primitive.MutVar
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
@@ -99,7 +97,7 @@ nesterov Nesterov{..} lr gr = MkOpto
         !w <- freezeRef rV
         pure ( -1, w )
     }
-        
+
 -- | Hyperparameters for 'adagrad'
 data Adagrad c = Adagrad
     { adagradRate :: c
@@ -239,18 +237,18 @@ instance Fractional c => Default (Adam c) where
 
 -- | Adaptive Moment Estimation (Kingma, Ba, 2015)
 adam
-    :: forall m v r a c.
+    :: forall m v r a c vc.
      ( RealFloat c
      , Floating a
      , LinearInPlace m v c a
-     , PrimMonad m
+     , Ref m c vc
      )
     => Adam c               -- ^ configuration
     -> Grad m r a           -- ^ gradient
     -> Opto m v r a
 adam Adam{..} gr = MkOpto
     { oInit   = (1, zeroL, zeroL) :: (c, a, a)
-    , oUpdate = \( rT :: MutVar (PrimState m) c
+    , oUpdate = \( rT :: vc
                  , rM :: v
                  , rV :: v
                  ) r x -> do
@@ -287,20 +285,20 @@ instance Fractional c => Default (AdaMax c) where
 
 -- | Adam variation (Kingma and Ba, 2015)
 adaMax
-    :: forall m v r a c.
+    :: forall m v r a c vc.
      ( RealFloat c
      , Metric c a
      , LinearInPlace m v c a
-     , PrimMonad m
+     , Ref m c vc
      )
     => AdaMax c             -- ^ configuration
     -> Grad m r a           -- ^ gradient
     -> Opto m v r a
 adaMax AdaMax{..} gr = MkOpto
     { oInit   = (1, zeroL, 0) :: (c, a, c)
-    , oUpdate = \( rT :: MutVar (PrimState m) c
+    , oUpdate = \( rT :: vc
                  , rM :: v
-                 , rU :: MutVar (PrimState m) c
+                 , rU :: vc
                  ) r x -> do
         !g <- gr r x
         rM .*= adaMaxDecay1
