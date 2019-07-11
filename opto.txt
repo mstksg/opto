@@ -20,7 +20,7 @@ module Numeric.Opto.Ref
 --   
 --   This allows us to reat mutable vectors and in-place mutable numbers or
 --   records in the same way.
-class Monad m => Ref m a v | v -> a
+class Monad m => Ref m a v | v -> a, m a -> v
 
 -- | Initialize a mutable reference with a given value
 thawRef :: Ref m a v => a -> m v
@@ -46,7 +46,22 @@ updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
 -- | <a>updateRef</a>, but forces the updated value before storing it back
 --   in the reference.
 updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m a (Data.Primitive.MutVar.MutVar s a)
+
+-- | Initialize a mutable reference with a given value
+thawRef :: (Ref m a v, PrimMonad m, v ~ MutVar (PrimState m) a) => a -> m v
+
+-- | Read an immutable value back from a mutable reference
+freezeRef :: (Ref m a v, PrimMonad m, v ~ MutVar (PrimState m) a) => v -> m a
+
+-- | Copy an immutable value into a mutable reference
+copyRef :: (Ref m a v, PrimMonad m, v ~ MutVar (PrimState m) a) => v -> a -> m ()
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Types.Int (Data.Primitive.MutVar.MutVar s GHC.Types.Int)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Integer.Type.Integer (Data.Primitive.MutVar.MutVar s GHC.Integer.Type.Integer)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Natural.Natural (Data.Primitive.MutVar.MutVar s GHC.Natural.Natural)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (GHC.Real.Ratio a) (Data.Primitive.MutVar.MutVar s (GHC.Real.Ratio a))
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Types.Float (Data.Primitive.MutVar.MutVar s GHC.Types.Float)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Types.Double (Data.Primitive.MutVar.MutVar s GHC.Types.Double)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Either.Either a b) (Data.Primitive.MutVar.MutVar s (Data.Either.Either a b))
 instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
 instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v Data.Type.Equality.~ mv, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
 instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m () ()
@@ -365,7 +380,7 @@ mapSample :: (r -> s) -> Opto m v s a -> Opto m v r a
 --   
 --   The state is updated in a "copying" manner (by generating new values
 --   purely), without any in-place mutation.
-fromCopying :: (PrimMonad m, LinearInPlace m v c a) => s -> (r -> a -> s -> m (c, Diff a, s)) -> Opto m v r a
+fromCopying :: (LinearInPlace m v c a, Ref m s u) => s -> (r -> a -> s -> m (c, Diff a, s)) -> Opto m v r a
 
 -- | Create a statless <a>Opto</a> based on a (monadic) optimizing
 --   function. The function takes the external <tt>r</tt> input and the
@@ -616,7 +631,7 @@ Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamEps] :: Adam c -> !c
 
 -- | Adaptive Moment Estimation (Kingma, Ba, 2015)
-adam :: forall m v r a c. (RealFloat c, Floating a, LinearInPlace m v c a, PrimMonad m) => Adam c -> Grad m r a -> Opto m v r a
+adam :: forall m v r a c vc. (RealFloat c, Floating a, LinearInPlace m v c a, Ref m c vc) => Adam c -> Grad m r a -> Opto m v r a
 
 -- | Hyperparameters for <a>adaMax</a>
 data AdaMax c
@@ -627,7 +642,7 @@ AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxEps] :: AdaMax c -> !c
 
 -- | Adam variation (Kingma and Ba, 2015)
-adaMax :: forall m v r a c. (RealFloat c, Metric c a, LinearInPlace m v c a, PrimMonad m) => AdaMax c -> Grad m r a -> Opto m v r a
+adaMax :: forall m v r a c vc. (RealFloat c, Metric c a, LinearInPlace m v c a, Ref m c vc) => AdaMax c -> Grad m r a -> Opto m v r a
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adam c)
