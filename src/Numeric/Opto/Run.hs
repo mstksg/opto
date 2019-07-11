@@ -527,6 +527,10 @@ optoConduitPar ro po x0 o = optoConduitPar_ ro po $ \sem inQueue outVar -> do
     optoPar ro' po readQueue x0 o
 {-# INLINE optoConduitPar #-}
 
+-- | A version of 'optoConduitPar' that performs a batch fetch from the
+-- input source for each thread's entire sample pool /before/ beginning
+-- parallel optimization.  This can be useful if the source can produce
+-- values faster in batch amounts.
 optoConduitParChunk
     :: forall m v r a. MonadUnliftIO m
     => RunOpts m a

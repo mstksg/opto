@@ -7,8 +7,17 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
--- http://ruder.io/optimizing-gradient-descent/
-
+-- |
+-- Module      : Numeric.Opto.Optimizer
+-- Copyright   : (c) Justin Le 2019
+-- License     : BSD3
+--
+-- Maintainer  : justin@jle.im
+-- Stability   : experimental
+-- Portability : non-portable
+--
+-- Defining various numeric optimizers.  Most of these implemtations are
+-- taken directly from <http://ruder.io/optimizing-gradient-descent/>
 module Numeric.Opto.Optimizer (
     steepestDescent
   , Momentum(..), momentum
@@ -24,6 +33,8 @@ import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
+-- | Steepest descent, acording to some learning rate.  The simplest
+-- optimizer.
 steepestDescent
     :: LinearInPlace m v c a
     => c                          -- ^ learning rate
@@ -33,6 +44,7 @@ steepestDescent lr gr = fromStateless $ \r x -> do
     !g <- gr r x
     pure (-lr, g)
 
+-- | Hyperparameter for 'momentum'
 newtype Momentum c = Momentum
     { momentumDecay :: c
     }
@@ -41,6 +53,7 @@ newtype Momentum c = Momentum
 instance Fractional c => Default (Momentum c) where
     def = Momentum { momentumDecay = 0.9 }
 
+-- | Steepest descent with momentum.
 momentum
     :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a)
     => Momentum c        -- ^ configuration
@@ -52,6 +65,7 @@ momentum Momentum{..} lr gr = fromCopying (zeroL @c @a) $ \r x v -> do
     let !v' = (momentumDecay .* v) .+. (lr .* g)
     pure (-1, v', v')
 
+-- | Hyperparameter for 'nesterov'
 newtype Nesterov c = Nesterov
     { nesterovDecay :: c
     }
@@ -60,6 +74,7 @@ newtype Nesterov c = Nesterov
 instance Fractional c => Default (Nesterov c) where
     def = Nesterov { nesterovDecay = 0.9 }
 
+-- | Nesterov accelerated gradient (NAG)
 nesterov
     :: forall m v r a c. (PrimMonad m, LinearInPlace m v c a)
     => Nesterov c       -- ^ configuration
@@ -72,6 +87,7 @@ nesterov Nesterov{..} lr gr = fromCopying (zeroL @c @a) $ \r x v -> do
     let !v' = vDecay .+. (lr .* g)
     pure (-1, v', v')
 
+-- | Hyperparameters for 'adam'
 data Adam c = Adam
     { adamStep    :: !c
     , adamDecay1  :: !c
@@ -87,6 +103,7 @@ instance Fractional c => Default (Adam c) where
                , adamEpsilon = 1e-8
                }
 
+-- | Adaptive Moment Estimation
 adam
     :: forall m v r a c.
      ( RealFloat c
@@ -118,6 +135,7 @@ adam Adam{..} gr = MkOpto
                )
     }
 
+-- | Hyperparameters for 'adaMax'
 data AdaMax c = AdaMax
     { adaMaxStep    :: !c
     , adaMaxDecay1  :: !c
@@ -133,6 +151,7 @@ instance Fractional c => Default (AdaMax c) where
                  , adaMaxEpsilon = 1e-8
                  }
 
+-- | Adam variation (Kingma and Ba, 2015)
 adaMax
     :: forall m v r a c.
      ( RealFloat c
@@ -163,3 +182,5 @@ adaMax AdaMax{..} gr = MkOpto
                , m
                )
     }
+
+-- TODO: RMSProp, AdaGrad, Nadam, AMSGrad

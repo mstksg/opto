@@ -32,7 +32,7 @@
 -- scaled (purely and also in-place), and measured.
 module Numeric.Opto.Update (
     Linear(..), sumLinear, gAdd, gZeroL, gScale
-  , Metric(..), gNorm_inf, gNorm_0, gNorm_1, gNorm_2, gQuadrance
+  , Metric(..), gDot, gNorm_inf, gNorm_0, gNorm_1, gNorm_2, gQuadrance
   , LinearInPlace(..), sumLinearInPlace
   ) where
 
@@ -56,9 +56,40 @@ import qualified Data.Vector.Generic.Sized         as SVG
 import qualified Numeric.LinearAlgebra             as UH
 import qualified Numeric.LinearAlgebra.Static      as H
 
+-- | If @a@ is an instance of @'Linear' c@, you can /add/ together values
+-- of @a@, and /scale/ them using @c@s.
+--
+-- For example, if you have a vector of doubles, you can add them together
+-- component-wise, and scale them by multiplying every item by the scalar.
+--
+-- Mathematically, this means that @a@ forms something like a module or
+-- vector space over @c@, where @c@ can be any 'Num' instance.
 class Num c => Linear c a | a -> c where
+    -- | Add together @a@s.  Should be associative.
+    --
+    -- @
+    -- x .+. (y .+. z) == (x .+. y) .+. z
+    -- @
+    --
+    -- If @a@ is an instance of 'Num', this can be just 'Prelude.+'.
     (.+.) :: a -> a -> a
+
+    -- | The "zero" @a@, meant to form an identity with '.+.'.
+    --
+    -- @
+    -- x .+. zeroL == x
+    -- zeroL .+. y == y
+    -- @
+    --
+    -- If @a@ is an instance of 'Num', this can be just 0.
     zeroL :: a
+
+    -- | Scale an @a@ by a factor @c@.  Should distribute over '.+.'.
+    --
+    -- @
+    -- a .* (x .+. y) == (a .* x) .+. (a .* y)
+    -- a .* (b .* c)  == (a * b) .* c
+    -- @
     (.*)  :: c -> a -> a
 
     infixl 6 .+.
@@ -73,18 +104,29 @@ class Num c => Linear c a | a -> c where
     default (.*) :: (ADTRecord a, Constraints a (Linear c)) => c -> a -> a
     (.*)  = gScale
 
+-- | Sum over a 'Foldable' container of @'Linear' c a@
 sumLinear :: (Linear c a, Foldable t) => t a -> a
 sumLinear = foldl' (.+.) zeroL
 
+-- | An implementation of '.+.' that works for records where every field is
+-- an instance of @'Linear' c@ (that is, every field is additive and can be
+-- scaled by the same @c@).
 gAdd :: forall c a. (ADTRecord a, Constraints a (Linear c)) => a -> a -> a
 gAdd = binaryOp @(Linear c) (.+.)
 
+-- | An implementation of 'zeroL' that works for records where every field
+-- is an instance of @'Linear' c@ (that is, every field is additive and can
+-- be scaled by the same @c@).
 gZeroL :: forall c a. (ADTRecord a, Constraints a (Linear c)) => a
 gZeroL = nullaryOp @(Linear c) zeroL
 
+-- | An implementation of '.*' that works for records where every field
+-- is an instance of @'Linear' c@ (that is, every field is additive and can
+-- be scaled by the same @c@).
 gScale :: forall c a. (ADTRecord a, Constraints a (Linear c)) => c -> a -> a
 gScale c = unaryOp @(Linear c) (c .*)
 
+-- | Class for values supporting an inner product and various norms.
 class Linear c a => Metric c a where
     infixl 7 <.>
     -- | Sum of component-wise product
@@ -113,33 +155,51 @@ class Linear c a => Metric c a where
     default quadrance :: (ADT a, Constraints a (Metric c)) => a -> c
     quadrance = gQuadrance
 
+-- | An implementation of 'gDot' that works for records where every field
+-- is an instance of @'Metric' c@.
 gDot :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> a -> c
 gDot x = getSum . mzipWith @(Metric c) (\x' -> Sum . (x' <.>)) x
 
+-- | An implementation of 'norm_inf' that works for records where every
+-- field is an instance of @'Metric' c@.
 gNorm_inf :: forall c a. (ADT a, Constraints a (Metric c), Ord c) => a -> c
 gNorm_inf = getMax
           . fromMaybe (error "norm_inf: Divergent infinity norm")
           . getOption
           . gfoldMap @(Metric c) (Option . Just . Max . abs . norm_inf)
 
+-- | An implementation of 'norm_0' that works for records where every field
+-- is an instance of @'Metric' c@.
 gNorm_0 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 gNorm_0 = getSum . gfoldMap @(Metric c) (Sum . norm_0)
 
+-- | An implementation of 'norm_1' that works for records where every field
+-- is an instance of @'Metric' c@.
 gNorm_1 :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 gNorm_1 = getSum . gfoldMap @(Metric c) (Sum . norm_1)
 
+-- | An implementation of 'norm_2' that works for records where every field
+-- is an instance of @'Metric' c@.
 gNorm_2 :: forall c a. (ADT a, Constraints a (Metric c), Floating c) => a -> c
 gNorm_2 = sqrt . gQuadrance
 
+-- | An implementation of 'quadrance' that works for records where every
+-- field is an instance of @'Metric' c@.
 gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 gQuadrance = getSum . gfoldMap @(Metric c) (Sum . quadrance)
 
-sumLinearInPlace :: (LinearInPlace m v c a, Foldable t) => v -> t a -> m ()
-sumLinearInPlace v = mapM_ (v .+.=)
-
+-- | Instaces of 'Linear' that support certain in-place mutations.
+-- Inspired by the BLAS Level 1 API.  A @'LinearInPlace' m v c a@ means
+-- that @v@ is a mutable reference to an @a@ that can be updated as an
+-- action in monad @m@.
 class (Ref m a v, Linear c a) => LinearInPlace m v c a where
+    -- | Add a value in-place.
     (.+.=) :: v -> a -> m ()
+
+    -- | Scale a value in-place.
     (.*=)  :: v -> c -> m ()
+
+    -- | Add a scaled value in-place.
     (.*+=) :: v -> (c, a) -> m ()
 
     r .+.= x      = modifyRef' r (.+. x)
@@ -150,6 +210,21 @@ class (Ref m a v, Linear c a) => LinearInPlace m v c a where
     infix 4 .*=
     infix 4 .*+=
 
+-- | Given some starting reference @v@, add every item in a foldable
+-- container into that reference in-place.
+sumLinearInPlace :: (LinearInPlace m v c a, Foldable t) => v -> t a -> m ()
+sumLinearInPlace v = mapM_ (v .+.=)
+
+-- | Newtype wrapper that gives "simple" 'Linear', 'Metric', and
+-- 'LinearInPlace' instances for instances of 'Num'.
+--
+-- This can be used with the /-XDerivingVia/ extension:
+--
+-- @
+-- deriving via (LinearNum Double) instance Linear Double Double
+-- deriving via (LinearNum Double) instance Metric Double Double
+-- instance Ref m Double v => LinearInPlace m v Double Double
+-- @
 newtype LinearNum a = LinearNum { getLinearNum :: a }
   deriving ( Show, Eq, Ord
            , Functor, Foldable, Traversable
