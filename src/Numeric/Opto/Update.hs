@@ -192,15 +192,15 @@ gQuadrance = getSum . gfoldMap @(Metric c) (Sum . quadrance)
 -- Inspired by the BLAS Level 1 API.  A @'LinearInPlace' m v c a@ means
 -- that @v@ is a mutable reference to an @a@ that can be updated as an
 -- action in monad @m@.
-class (Ref m a v, Linear c a) => LinearInPlace m v c a where
+class (Mutable m a, Linear c a) => LinearInPlace m c a where
     -- | Add a value in-place.
-    (.+.=) :: v -> a -> m ()
+    (.+.=) :: Ref m a -> a -> m ()
 
     -- | Scale a value in-place.
-    (.*=)  :: v -> c -> m ()
+    (.*=)  :: Ref m a -> c -> m ()
 
     -- | Add a scaled value in-place.
-    (.*+=) :: v -> (c, a) -> m ()
+    (.*+=) :: Ref m a -> (c, a) -> m ()
 
     r .+.= x      = modifyRef' r (.+. x)
     r  .*= c      = modifyRef' r (c .*)
@@ -212,7 +212,7 @@ class (Ref m a v, Linear c a) => LinearInPlace m v c a where
 
 -- | Given some starting reference @v@, add every item in a foldable
 -- container into that reference in-place.
-sumLinearInPlace :: (LinearInPlace m v c a, Foldable t) => v -> t a -> m ()
+sumLinearInPlace :: (LinearInPlace m c a, Foldable t) => v -> t a -> m ()
 sumLinearInPlace v = mapM_ (v .+.=)
 
 -- | Newtype wrapper that gives "simple" 'Linear', 'Metric', and
@@ -260,12 +260,12 @@ deriving via (LinearNum Float)       instance Metric Float Float
 deriving via (LinearNum Double)      instance Metric Double Double
 deriving via (LinearNum (Complex a)) instance RealFloat a => Metric (Complex a) (Complex a)
 
-instance Ref m Int v                        => LinearInPlace m v Int Int
-instance Ref m Integer v                    => LinearInPlace m v Integer Integer
-instance Ref m Rational v                   => LinearInPlace m v Rational Rational
-instance Ref m Float v                      => LinearInPlace m v Float Float
-instance Ref m Double v                     => LinearInPlace m v Double Double
-instance (Ref m (Complex a) v, RealFloat a) => LinearInPlace m v (Complex a) (Complex a)
+instance Mutable m Int                        => LinearInPlace m Int Int
+instance Mutable m Integer                    => LinearInPlace m Integer Integer
+instance Mutable m Rational                   => LinearInPlace m Rational Rational
+instance Mutable m Float                      => LinearInPlace m Float Float
+instance Mutable m Double                     => LinearInPlace m Double Double
+instance (Mutable m (Complex a), RealFloat a) => LinearInPlace m (Complex a) (Complex a)
 
 instance (Num a, VG.Vector v a, KnownNat n) => Linear a (SVG.Vector v n a) where
     (.+.)    = (+)
@@ -280,7 +280,7 @@ instance (Floating a, Ord a, VG.Vector v a, KnownNat n) => Metric a (SVG.Vector 
     quadrance = SVG.sum . (^ (2 :: Int))
 
 instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
-      => LinearInPlace m (SVG.MVector mv n s a) a (SVG.Vector v n a) where
+      => LinearInPlace m a (SVG.Vector v n a) where
     r .+.= xs = flip SVG.imapM_ xs $ \i x ->
       SVGM.modify r (+ x) i
     r .*= c = forM_ finites $ \i ->
@@ -299,7 +299,7 @@ instance KnownNat n => Metric Double (H.R n) where
     norm_1    = H.norm_1
     norm_2    = H.norm_2
     quadrance = (**2) . H.norm_2
-instance (KnownNat n, Ref m (H.R n) v) => LinearInPlace m v Double (H.R n)
+instance (KnownNat n, Mutable m (H.R n)) => LinearInPlace m Double (H.R n)
 
 instance (KnownNat n, KnownNat m) => Linear Double (H.L n m) where
     (.+.)   = (+)
@@ -312,7 +312,7 @@ instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
     norm_1    = UH.sumElements . H.extract
     norm_2    = UH.norm_2 . UH.flatten . H.extract
     quadrance = (**2) . norm_2
-instance (KnownNat n, KnownNat k, Ref m (H.L n k) v) => LinearInPlace m v Double (H.L n k)
+instance (KnownNat n, KnownNat k, Mutable m (H.L n k)) => LinearInPlace m Double (H.L n k)
 
 instance (Linear c a, Linear c b) => Linear c (a, b) where
 instance (Linear c a, Linear c b, Linear c d) => Linear c (a, b, d) where
@@ -324,7 +324,7 @@ instance (Metric c a, Metric c b, Metric c d, Ord c, Floating c) => Metric c (a,
 instance (Metric c a, Metric c b, Metric c d, Metric c e, Ord c, Floating c) => Metric c (a, b, d, e)
 instance (Metric c a, Metric c b, Metric c d, Metric c e, Metric c f, Ord c, Floating c) => Metric c (a, b, d, e, f)
 
-instance (Ref m (a, b) v, Linear c a, Linear c b) => LinearInPlace m v c (a, b)
-instance (Ref m (a, b, d) v, Linear c a, Linear c b, Linear c d) => LinearInPlace m v c (a, b, d)
-instance (Ref m (a, b, d, e) v, Linear c a, Linear c b, Linear c d, Linear c e) => LinearInPlace m v c (a, b, d, e)
-instance (Ref m (a, b, d, e, f) v, Linear c a, Linear c b, Linear c d, Linear c e, Linear c f) => LinearInPlace m v c (a, b, d, e, f)
+instance (Mutable m (a, b), Linear c a, Linear c b) => LinearInPlace m c (a, b)
+instance (Mutable m (a, b, d), Linear c a, Linear c b, Linear c d) => LinearInPlace m c (a, b, d)
+instance (Mutable m (a, b, d, e), Linear c a, Linear c b, Linear c d, Linear c e) => LinearInPlace m c (a, b, d, e)
+instance (Mutable m (a, b, d, e, f), Linear c a, Linear c b, Linear c d, Linear c e, Linear c f) => LinearInPlace m c (a, b, d, e, f)

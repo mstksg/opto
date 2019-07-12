@@ -23,7 +23,7 @@
 --
 -- Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref (
-    -- Ref(..)
+    Mutable(..)
   ) where
 
 import           Control.Monad.Primitive
