@@ -212,7 +212,7 @@ class (Mutable m a, Linear c a) => LinearInPlace m c a where
 
 -- | Given some starting reference @v@, add every item in a foldable
 -- container into that reference in-place.
-sumLinearInPlace :: (LinearInPlace m c a, Foldable t) => v -> t a -> m ()
+sumLinearInPlace :: (LinearInPlace m c a, Foldable t) => Ref m a -> t a -> m ()
 sumLinearInPlace v = mapM_ (v .+.=)
 
 -- | Newtype wrapper that gives "simple" 'Linear', 'Metric', and

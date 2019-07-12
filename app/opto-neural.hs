@@ -110,7 +110,8 @@ data Net = N { _weights1 :: !(L 250 784)
 makeLenses ''Net
 
 instance Linear Double Net
-instance Ref m Net v => LinearInPlace m v Double Net
+instance PrimMonad m => Mutable m Net
+instance PrimMonad m => LinearInPlace m Double Net
 
 logistic :: Floating a => a -> a
 logistic x = 1 / (1 + exp (-x))
@@ -169,9 +170,9 @@ main = MWC.withSystemRandom $ \g -> do
     n    <- getNumCapabilities
     sampleQueue <- atomically $ newTBQueue 25000
 
-    let o :: PrimMonad m => Opto m (MutVar (PrimState m) Net) (R 784, R 10) Net
-        o = adam @_ @(MutVar _ Net) def
-               (bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y))
+    let o :: PrimMonad m => Opto m (R 784, R 10) Net
+        o = adam def $
+              bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y)
 
         ro = def { roBatch = oBatch }
 

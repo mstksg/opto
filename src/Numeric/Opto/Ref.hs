@@ -77,71 +77,6 @@ import qualified Data.Vector.Mutable       as MV
 --        return y
 --    {-# MINIMAL thawRef, (copyRef | updateRef, updateRef') #-}
 
---instance (PrimMonad m, PrimState m ~ s) => Ref m a (MutVar s a) where
---    thawRef    = newMutVar
---    freezeRef  = readMutVar
---    copyRef    = writeMutVar
---    modifyRef  = modifyMutVar
---    modifyRef' = modifyMutVar'
---    updateRef  = atomicModifyMutVar
---    updateRef' = atomicModifyMutVar'
-
---instance (PrimMonad m, PrimState m ~ s) => Ref m (V.Vector a) (MV.MVector s a) where
---    thawRef        = V.thaw
---    freezeRef      = V.freeze
---    copyRef        = V.copy
---    modifyRef r f  = V.copy r . f =<< V.freeze r
---    modifyRef' r f = do
---      v <- f <$> V.freeze r
---      v `seq` V.copy r v
---    updateRef r f = do
---      (v, x) <- f <$> V.freeze r
---      V.copy r v
---      return x
---    updateRef' r f = do
---      (v, x) <- f <$> V.freeze r
---      v `seq` x `seq` V.copy r v
---      return x
-
---instance (PrimMonad m, VG.Mutable v ~ mv, PrimState m ~ s, VG.Vector v a)
---      => Ref m (SVG.Vector v n a) (SVG.MVector mv n s a) where
---    thawRef        = SVG.thaw
---    freezeRef      = SVG.freeze
---    copyRef        = SVG.copy
---    modifyRef r f  = SVG.copy r . f =<< SVG.freeze r
---    modifyRef' r f = do
---      v <- f <$> SVG.freeze r
---      v `seq` SVG.copy r v
---    updateRef r f = do
---      (v, x) <- f <$> SVG.freeze r
---      SVG.copy r v
---      return x
---    updateRef' r f = do
---      (v, x) <- f <$> SVG.freeze r
---      v `seq` x `seq` SVG.copy r v
---      return x
-
---instance Monad m => Ref m () () where
---    thawRef   _ = pure ()
---    freezeRef _ = pure ()
---    copyRef _ _ = pure ()
-
---instance (Monad m, Ref m a u, Ref m b v) => Ref m (a, b) (u, v) where
---    thawRef   (!x, !y) = (,) <$> thawRef x   <*> thawRef y
---    freezeRef (u , v ) = (,) <$> freezeRef u <*> freezeRef v
---    copyRef   (u , v ) (!x, !y) = copyRef u x *> copyRef v y
-
---instance (Monad m, Ref m a u, Ref m b v, Ref m c w) => Ref m (a, b, c) (u, v, w) where
---    thawRef   (!x, !y, !z) = (,,) <$> thawRef x   <*> thawRef y   <*> thawRef z
---    freezeRef (u , v , w ) = (,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w
---    copyRef   (u , v , w ) (!x, !y, !z) = copyRef u x *> copyRef v y *> copyRef w z
-
---instance (Monad m, Ref m a u, Ref m b v, Ref m c w, Ref m d j) => Ref m (a, b, c, d) (u, v, w, j) where
---    thawRef   (!x, !y, !z, !a) = (,,,) <$> thawRef x   <*> thawRef y   <*> thawRef z   <*> thawRef a
---    freezeRef (u , v , w , j ) = (,,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w <*> freezeRef j
---    copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
-
-
 class Monad m => Mutable m a where
     type Ref m a = (v :: Type) | v -> a
     type Ref m a = MutVar (PrimState m) a
@@ -150,6 +85,29 @@ class Monad m => Mutable m a where
     freezeRef :: Ref m a -> m a
     copyRef   :: Ref m a -> a -> m ()
 
+    -- | Apply a pure function on an immutable value onto a value stored in
+    -- a mutable reference.
+    modifyRef  :: Ref m a -> (a -> a) -> m ()
+    modifyRef v f = updateRef v ((,()) . f)
+    -- | 'modifyRef', but forces the result before storing it back in the
+    -- reference.
+    modifyRef' :: Ref m a -> (a -> a) -> m ()
+    modifyRef' v f = updateRef' v ((,()) . f)
+    -- | Apply a pure function on an immutable value onto a value stored in
+    -- a mutable reference, returning a result value from that function.
+    updateRef  :: Ref m a -> (a -> (a, b)) -> m b
+    updateRef v f = do
+        (x, y) <- f <$> freezeRef v
+        copyRef v x
+        return y
+    -- | 'updateRef', but forces the updated value before storing it back in the
+    -- reference.
+    updateRef' :: Ref m a -> (a -> (a, b)) -> m b
+    updateRef' v f = do
+        (x, y) <- f <$> freezeRef v
+        x `seq` copyRef v x
+        return y
+
     default thawRef :: (Ref m a ~ MutVar (PrimState m) a, PrimMonad m) => a -> m (Ref m a)
     thawRef   = newMutVar
     default freezeRef :: (Ref m a ~ MutVar (PrimState m) a, PrimMonad m) => Ref m a -> m a
@@ -157,12 +115,55 @@ class Monad m => Mutable m a where
     default copyRef :: (Ref m a ~ MutVar (PrimState m) a, PrimMonad m) => Ref m a -> a -> m ()
     copyRef = writeMutVar
 
+    {-# MINIMAL #-}
+
 instance PrimMonad m => Mutable m Int
 instance PrimMonad m => Mutable m Integer
 instance PrimMonad m => Mutable m (Ratio a)
 instance PrimMonad m => Mutable m Float
 instance PrimMonad m => Mutable m Double
 instance PrimMonad m => Mutable m (Complex a)
+
+instance PrimMonad m => Mutable m (V.Vector a) where
+    type Ref m (V.Vector a) = MV.MVector (PrimState m) a
+
+    thawRef        = V.thaw
+    freezeRef      = V.freeze
+    copyRef        = V.copy
+
+instance (PrimMonad m, VG.Vector v a) => Mutable m (SVG.Vector v n a) where
+    type Ref m (SVG.Vector v n a) = SVG.MVector (VG.Mutable v) n (PrimState m) a
+    thawRef        = SVG.thaw
+    freezeRef      = SVG.freeze
+    copyRef        = SVG.copy
+
+instance Monad m => Mutable m () where
+    type Ref m () = ()
+    thawRef   _ = pure ()
+    freezeRef _ = pure ()
+    copyRef _ _ = pure ()
+
+instance (Monad m, Mutable m a, Mutable m b) => Mutable m (a, b) where
+    type Ref m (a, b) = (Ref m a, Ref m b)
+    thawRef   (!x, !y) = (,) <$> thawRef x   <*> thawRef y
+    freezeRef (u , v ) = (,) <$> freezeRef u <*> freezeRef v
+    copyRef   (u , v ) (!x, !y) = copyRef u x *> copyRef v y
+
+instance (Monad m, Mutable m a, Mutable m b, Mutable m c) => Mutable m (a, b, c) where
+    type Ref m (a, b, c) = (Ref m a, Ref m b, Ref m c)
+    thawRef   (!x, !y, !z) = (,,) <$> thawRef x   <*> thawRef y   <*> thawRef z
+    freezeRef (u , v , w ) = (,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w
+    copyRef   (u , v , w ) (!x, !y, !z) = copyRef u x *> copyRef v y *> copyRef w z
+
+instance (Monad m, Mutable m a, Mutable m b, Mutable m c, Mutable m d) => Mutable m (a, b, c, d) where
+    type Ref m (a, b, c, d) = (Ref m a, Ref m b, Ref m c, Ref m d)
+    thawRef   (!x, !y, !z, !a) = (,,,) <$> thawRef x   <*> thawRef y   <*> thawRef z   <*> thawRef a
+    freezeRef (u , v , w , j ) = (,,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w <*> freezeRef j
+    copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
+
+
+
+
 
 -- class BVGroup s as i o | o -> i, i -> as where
 --     -- | Helper method for generically "splitting" 'BVar's out of

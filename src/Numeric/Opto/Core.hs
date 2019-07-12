@@ -48,33 +48,32 @@ type Diff     a = a
 -- with respect to an @r@ sample.
 type Grad m r a = r -> a -> m (Diff a)
 
--- | An @'Opto' m v r a@ represents a (potentially stateful) in-place
--- optimizer for values of type @a@, stored in mutable references @v@, that
--- can be run in a monad @m@.  Each optimization step requires an
--- additional external "sample" @r@.
+-- | An @'Opto' m r a@ represents a (potentially stateful) in-place
+-- optimizer for values of type @a@ that can be run in a monad @m@.  Each
+-- optimization step requires an additional external "sample" @r@.
 --
 -- Usually these should be defined to be polymorphic on @m@, so that it can
 -- be run in many different contexts in "Numeric.Opto.Run".
 --
 -- An @'Opto' m v () a@ is a "non-sampling" optimizer, where each
 -- optimization step doesn't require any external input.
-data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type where
-    MkOpto :: forall s u m v r a c. (LinearInPlace m v c a, Ref m s u)
+data Opto :: (Type -> Type) -> Type -> Type -> Type where
+    MkOpto :: forall s m r a c. (LinearInPlace m c a, Mutable m s)
            => { oInit   :: !s
-              , oUpdate :: !( u
+              , oUpdate :: !( Ref m s
                            -> r
                            -> a
                            -> m (c, Diff a)
                             )
               }
-           -> Opto m v r a
+           -> Opto m r a
 
 -- | (Contravariantly) map over the type of the external sample input of an
 -- 'Opto'.
 mapSample
     :: (r -> s)
-    -> Opto m v s a
-    -> Opto m v r a
+    -> Opto m s a
+    -> Opto m r a
 mapSample f MkOpto{..} = MkOpto
     { oInit   = oInit
     , oUpdate = \u r -> oUpdate u (f r)
@@ -89,15 +88,15 @@ mapSample f MkOpto{..} = MkOpto
 -- The state is updated in a "copying" manner (by generating new values
 -- purely), without any in-place mutation.
 fromCopying
-    :: (PrimMonad m, LinearInPlace m v c a)
+    :: (PrimMonad m, LinearInPlace m c a, Mutable m s)
     => s                                    -- ^ Initial state
     -> (r -> a -> s -> m (c, Diff a, s))    -- ^ State-updating function
-    -> Opto m v r a
+    -> Opto m r a
 fromCopying s0 update = MkOpto
     { oInit    = s0
     , oUpdate = \rS r x -> do
-        (c, g, s) <- update r x =<< readMutVar rS
-        writeMutVar rS s
+        (c, g, s) <- update r x =<< freezeRef rS
+        copyRef rS s
         return (c, g)
     }
 
@@ -105,9 +104,9 @@ fromCopying s0 update = MkOpto
 -- The function takes the external @r@ input and the current value @a@ and
 -- returns a step to move @a@ in and a factor to scale that step via.
 fromStateless
-    :: (LinearInPlace m v c a)
+    :: (LinearInPlace m c a)
     => (r -> a -> m (c, Diff a))
-    -> Opto m v r a
+    -> Opto m r a
 fromStateless update = MkOpto
     { oInit   = ()
     , oUpdate = \(~()) -> update
