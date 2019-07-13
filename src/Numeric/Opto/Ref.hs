@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns           #-}
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE DerivingVia            #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
@@ -24,11 +25,15 @@
 -- Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref (
     Mutable(..)
+  , MutRef(..)
+  , RefOf(..), ValOf(..)
+  , GMutable, gThawRef, gFreezeRef, gCopyRef
   ) where
 
 import           Control.Monad.Primitive
 import           Data.Coerce
 import           Data.Complex
+import           Data.Functor.Identity
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Ratio
@@ -37,45 +42,6 @@ import qualified Data.Vector               as V
 import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
 import qualified Data.Vector.Mutable       as MV
-
----- | Abstraction over types of mutable references for values.  A @'Ref'
----- m a v@ means that a @v@ is a mutable reference to an @a@, and we may
----- update/write/modify @v@ in context @m@.
-----
----- This allows us to reat mutable vectors and in-place mutable numbers or
----- records in the same way.
---class Monad m => Ref m a v | v -> a where
---    -- | Initialize a mutable reference with a given value
---    thawRef      :: a -> m v
---    -- | Read an immutable value back from a mutable reference
---    freezeRef    :: v -> m a
---    freezeRef v = updateRef v $ \x -> (x,x)
---    -- | Copy an immutable value into a mutable reference
---    copyRef   :: v -> a -> m ()
---    copyRef v x = modifyRef v (const x)
---    -- | Apply a pure function on an immutable value onto a value stored in
---    -- a mutable reference.
---    modifyRef  :: v -> (a -> a) -> m ()
---    modifyRef v f = updateRef v ((,()) . f)
---    -- | 'modifyRef', but forces the result before storing it back in the
---    -- reference.
---    modifyRef' :: v -> (a -> a) -> m ()
---    modifyRef' v f = updateRef' v ((,()) . f)
---    -- | Apply a pure function on an immutable value onto a value stored in
---    -- a mutable reference, returning a result value from that function.
---    updateRef  :: v -> (a -> (a, b)) -> m b
---    updateRef v f = do
---        (x, y) <- f <$> freezeRef v
---        copyRef v x
---        return y
---    -- | 'updateRef', but forces the updated value before storing it back in the
---    -- reference.
---    updateRef' :: v -> (a -> (a, b)) -> m b
---    updateRef' v f = do
---        (x, y) <- f <$> freezeRef v
---        x `seq` copyRef v x
---        return y
---    {-# MINIMAL thawRef, (copyRef | updateRef, updateRef') #-}
 
 class Monad m => Mutable m a where
     type Ref m a = (v :: Type) | v -> a
@@ -124,6 +90,12 @@ instance PrimMonad m => Mutable m Float
 instance PrimMonad m => Mutable m Double
 instance PrimMonad m => Mutable m (Complex a)
 
+-- | Newtype wrapper that can provide any type with a 'Mutable' instance.
+-- Can be useful for avoiding orphan instances.
+newtype MutRef a = MutRef { runMutRef :: a }
+
+instance PrimMonad m => Mutable m (MutRef a)
+
 instance PrimMonad m => Mutable m (V.Vector a) where
     type Ref m (V.Vector a) = MV.MVector (PrimState m) a
 
@@ -162,9 +134,6 @@ instance (Monad m, Mutable m a, Mutable m b, Mutable m c, Mutable m d) => Mutabl
     copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
 
 
-
-
-
 -- class BVGroup s as i o | o -> i, i -> as where
 --     -- | Helper method for generically "splitting" 'BVar's out of
 --     -- constructors inside a 'BVar'.  See 'splitBV'.
@@ -173,7 +142,15 @@ instance (Monad m, Mutable m a, Mutable m b, Mutable m c, Mutable m d) => Mutabl
 --     -- a constructor into a 'BVar'.  See 'joinBV'.
 --     gjoinBV  :: Rec AddFunc as -> Rec ZeroFunc as -> o () -> BVar s (i ())
 
--- newtype RefOf m a = RefOf { getRefOf :: Ref m a }
+newtype RefOf m a = RefOf { getRefOf :: Ref m a }
+newtype ValOf a = ValOf { getValOf :: a }
+
+instance Mutable m a => Mutable m (ValOf a) where
+    type Ref m (ValOf a) = RefOf m a
+
+    thawRef   = fmap coerce . thawRef @m @a   . coerce
+    freezeRef = fmap coerce . freezeRef @m @a . coerce
+    copyRef v x = copyRef @m @a (coerce v) (coerce x)
 
 class Monad m => GMutable m f g | g -> f, m f -> g where
     gThawRef_   :: f x -> m (g x)
@@ -185,34 +162,44 @@ instance GMutable m f g => GMutable m (M1 i c f) (M1 i c g) where
     gFreezeRef_ = fmap M1 . gFreezeRef_ . unM1
     gCopyRef_ (M1 v) (M1 x) = gCopyRef_ v x
 
-instance (Mutable m a, v ~ Ref m a) => GMutable m (K1 i a) (K1 i v) where
-    gThawRef_   = fmap K1 . thawRef @m @a   . unK1
-    gFreezeRef_ = fmap K1 . freezeRef @m @a . unK1
-    gCopyRef_ (K1 v) (K1 x) = copyRef v x
+instance (Mutable m a) => GMutable m (K1 i a) (K1 i (RefOf m a)) where
+    gThawRef_   = fmap (K1 . RefOf) . thawRef @m @a   . unK1
+    gFreezeRef_ = fmap K1 . freezeRef @m @a . getRefOf . unK1
+    gCopyRef_ (K1 (RefOf v)) (K1 x) = copyRef v x
 
 instance (GMutable m f g, GMutable m f' g') => GMutable m (f :*: f') (g :*: g') where
     gThawRef_   (x :*: y) = (:*:) <$> gThawRef_ x   <*> gThawRef_ y
     gFreezeRef_ (u :*: v) = (:*:) <$> gFreezeRef_ u <*> gFreezeRef_ v
     gCopyRef_ (u :*: v) (x :*: y) = gCopyRef_ u x *> gCopyRef_ v y
 
--- newtype GRef m f a = GRef { getGRef :: f }
+gThawRef
+    :: forall z m.
+     ( Generic (z Identity)
+     , Generic (z (RefOf m))
+     , GMutable m (Rep (z Identity)) (Rep (z (RefOf m)))
+     )
+    => z Identity
+    -> m (z (RefOf m))
+gThawRef = fmap to . gThawRef_ . from
 
--- instance Monad m => Mutable m a where
+gFreezeRef
+    :: forall z m.
+     ( Generic (z Identity)
+     , Generic (z (RefOf m))
+     , GMutable m (Rep (z Identity)) (Rep (z (RefOf m)))
+     )
+    => z (RefOf m)
+    -> m (z Identity)
+gFreezeRef = fmap to . gFreezeRef_ . from
 
-
-
--- newtype MutVarRef a = MVR { getMVR :: a }
-
--- newtype MutVarVar a = MVV { getMVR :: MutVar (PrimState m) a }
-
--- instance PrimMonad m => Mutable m (MutVarRef a) where
---     type Ref m (MutVarRef a) = MutVar (PrimState m) a
-
---     thawRef   = coerce $ newMutVar @m @a
---     freezeRef = fmap coerce . readMutVar @m @a
---     copyRef   = coerce $ writeMutVar @m @a
-
--- -- deriving via MutVarRef Int instance PrimMonad m => Mutable m Int
-
-
+gCopyRef
+    :: forall z m.
+     ( Generic (z Identity)
+     , Generic (z (RefOf m))
+     , GMutable m (Rep (z Identity)) (Rep (z (RefOf m)))
+     )
+    => z (RefOf m)
+    -> z Identity
+    -> m ()
+gCopyRef v x = gCopyRef_ (from v) (from x)
 

@@ -88,7 +88,7 @@ mapSample f MkOpto{..} = MkOpto
 -- The state is updated in a "copying" manner (by generating new values
 -- purely), without any in-place mutation.
 fromCopying
-    :: (PrimMonad m, LinearInPlace m c a, Mutable m s)
+    :: (LinearInPlace m c a, Mutable m s)
     => s                                    -- ^ Initial state
     -> (r -> a -> s -> m (c, Diff a, s))    -- ^ State-updating function
     -> Opto m r a

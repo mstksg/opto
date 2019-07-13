@@ -99,7 +99,7 @@ nesterov Nesterov{..} lr gr = MkOpto
         !w <- freezeRef rV
         pure ( -1, w )
     }
-        
+
 -- | Hyperparameters for 'adagrad'
 data Adagrad c = Adagrad
     { adagradRate :: c
@@ -311,4 +311,4 @@ adaMax AdaMax{..} gr = MkOpto
                )
     }
 
--- TODO: RMSProp, Adadelta, Nadam, AMSGrad
+-- TODO: Nadam, AMSGrad
