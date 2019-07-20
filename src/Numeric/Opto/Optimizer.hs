@@ -29,9 +29,7 @@ module Numeric.Opto.Optimizer (
   , AdaMax(..), adaMax
   ) where
 
-import           Control.Monad.Primitive
 import           Data.Default
-import           Data.Primitive.MutVar
 import           Numeric.Opto.Core
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update

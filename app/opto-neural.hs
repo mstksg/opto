@@ -28,7 +28,6 @@ import           Data.Bitraversable
 import           Data.Conduit
 import           Data.Default
 import           Data.IDX
-import           Data.Primitive.MutVar
 import           Data.Time
 import           Data.Traversable
 import           Data.Tuple

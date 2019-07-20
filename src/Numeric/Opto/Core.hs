@@ -34,9 +34,7 @@ module Numeric.Opto.Core (
   , nonSampling, pureNonSampling
   ) where
 
-import           Control.Monad.Primitive
 import           Data.Kind
-import           Data.Primitive.MutVar
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 

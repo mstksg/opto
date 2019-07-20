@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns           #-}
 {-# LANGUAGE DefaultSignatures      #-}
+{-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE DerivingVia            #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
@@ -9,8 +10,10 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeInType             #-}
+{-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
 -- |
@@ -26,18 +29,13 @@
 module Numeric.Opto.Ref (
     Mutable(..)
   , MutRef(..)
-  , RefOf(..), ValOf(..)
-  , GMutable, gThawRef, gFreezeRef, gCopyRef
   ) where
 
 import           Control.Monad.Primitive
-import           Data.Coerce
 import           Data.Complex
-import           Data.Functor.Identity
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Ratio
-import           GHC.Generics
 import qualified Data.Vector               as V
 import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
@@ -132,74 +130,3 @@ instance (Monad m, Mutable m a, Mutable m b, Mutable m c, Mutable m d) => Mutabl
     thawRef   (!x, !y, !z, !a) = (,,,) <$> thawRef x   <*> thawRef y   <*> thawRef z   <*> thawRef a
     freezeRef (u , v , w , j ) = (,,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w <*> freezeRef j
     copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
-
-
--- class BVGroup s as i o | o -> i, i -> as where
---     -- | Helper method for generically "splitting" 'BVar's out of
---     -- constructors inside a 'BVar'.  See 'splitBV'.
---     gsplitBV :: Rec AddFunc as -> Rec ZeroFunc as -> BVar s (i ()) -> o ()
---     -- | Helper method for generically "joining" 'BVar's inside
---     -- a constructor into a 'BVar'.  See 'joinBV'.
---     gjoinBV  :: Rec AddFunc as -> Rec ZeroFunc as -> o () -> BVar s (i ())
-
-newtype RefOf m a = RefOf { getRefOf :: Ref m a }
-newtype ValOf a = ValOf { getValOf :: a }
-
-instance Mutable m a => Mutable m (ValOf a) where
-    type Ref m (ValOf a) = RefOf m a
-
-    thawRef   = fmap coerce . thawRef @m @a   . coerce
-    freezeRef = fmap coerce . freezeRef @m @a . coerce
-    copyRef v x = copyRef @m @a (coerce v) (coerce x)
-
-class Monad m => GMutable m f g | g -> f, m f -> g where
-    gThawRef_   :: f x -> m (g x)
-    gFreezeRef_ :: g x -> m (f x)
-    gCopyRef_   :: g x -> f x -> m ()
-
-instance GMutable m f g => GMutable m (M1 i c f) (M1 i c g) where
-    gThawRef_   = fmap M1 . gThawRef_ . unM1
-    gFreezeRef_ = fmap M1 . gFreezeRef_ . unM1
-    gCopyRef_ (M1 v) (M1 x) = gCopyRef_ v x
-
-instance (Mutable m a) => GMutable m (K1 i a) (K1 i (RefOf m a)) where
-    gThawRef_   = fmap (K1 . RefOf) . thawRef @m @a   . unK1
-    gFreezeRef_ = fmap K1 . freezeRef @m @a . getRefOf . unK1
-    gCopyRef_ (K1 (RefOf v)) (K1 x) = copyRef v x
-
-instance (GMutable m f g, GMutable m f' g') => GMutable m (f :*: f') (g :*: g') where
-    gThawRef_   (x :*: y) = (:*:) <$> gThawRef_ x   <*> gThawRef_ y
-    gFreezeRef_ (u :*: v) = (:*:) <$> gFreezeRef_ u <*> gFreezeRef_ v
-    gCopyRef_ (u :*: v) (x :*: y) = gCopyRef_ u x *> gCopyRef_ v y
-
-gThawRef
-    :: forall z m.
-     ( Generic (z Identity)
-     , Generic (z (RefOf m))
-     , GMutable m (Rep (z Identity)) (Rep (z (RefOf m)))
-     )
-    => z Identity
-    -> m (z (RefOf m))
-gThawRef = fmap to . gThawRef_ . from
-
-gFreezeRef
-    :: forall z m.
-     ( Generic (z Identity)
-     , Generic (z (RefOf m))
-     , GMutable m (Rep (z Identity)) (Rep (z (RefOf m)))
-     )
-    => z (RefOf m)
-    -> m (z Identity)
-gFreezeRef = fmap to . gFreezeRef_ . from
-
-gCopyRef
-    :: forall z m.
-     ( Generic (z Identity)
-     , Generic (z (RefOf m))
-     , GMutable m (Rep (z Identity)) (Rep (z (RefOf m)))
-     )
-    => z (RefOf m)
-    -> z Identity
-    -> m ()
-gCopyRef v x = gCopyRef_ (from v) (from x)
-
