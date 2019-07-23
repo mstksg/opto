@@ -7,6 +7,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
@@ -29,13 +30,16 @@
 module Numeric.Opto.Ref (
     Mutable(..)
   , MutRef(..)
+  , GMutable, gThawRef, gFreezeRef, gCopyRef
   ) where
 
 import           Control.Monad.Primitive
 import           Data.Complex
+import           Data.Functor.Identity
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Ratio
+import           GHC.Generics
 import qualified Data.Vector               as V
 import qualified Data.Vector.Generic       as VG
 import qualified Data.Vector.Generic.Sized as SVG
@@ -130,3 +134,69 @@ instance (Monad m, Mutable m a, Mutable m b, Mutable m c, Mutable m d) => Mutabl
     thawRef   (!x, !y, !z, !a) = (,,,) <$> thawRef x   <*> thawRef y   <*> thawRef z   <*> thawRef a
     freezeRef (u , v , w , j ) = (,,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w <*> freezeRef j
     copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
+
+class Monad m => GMutable m f where
+    type GRef_ m f = (u :: Type -> Type) | u -> f
+
+    gThawRef_ :: f a -> m (GRef_ m f a)
+    gFreezeRef_ :: GRef_ m f a -> m (f a)
+    gCopyRef_ :: GRef_ m f a -> f a -> m ()
+
+instance Mutable m c => GMutable m (K1 i c) where
+    type GRef_ m (K1 i c) = K1 i (Ref m c)
+
+    gThawRef_ = fmap K1 . thawRef . unK1
+    gFreezeRef_ = fmap K1 . freezeRef . unK1
+    gCopyRef_ (K1 v) (K1 x) = copyRef v x
+
+instance (GMutable m f, GMutable m g) => GMutable m (f :*: g) where
+    type GRef_ m (f :*: g) = GRef_ m f :*: GRef_ m g
+
+    gThawRef_ (x :*: y) = (:*:) <$> gThawRef_ x <*> gThawRef_ y
+    gFreezeRef_ (v :*: u) = (:*:) <$> gFreezeRef_ v <*> gFreezeRef_ u
+    gCopyRef_ (v :*: u) (x :*: y) = gCopyRef_ v x *> gCopyRef_ u y
+
+instance GMutable m f => GMutable m (M1 i c f) where
+    type GRef_ m (M1 i c f) = M1 i c (GRef_ m f)
+
+    gThawRef_ = fmap M1 . gThawRef_ . unM1
+    gFreezeRef_ = fmap M1 . gFreezeRef_ . unM1
+    gCopyRef_ (M1 v) (M1 x) = gCopyRef_ v x
+
+instance (GMutable m f, GMutable m g, PrimMonad m) => GMutable m (f :+: g) where
+    type GRef_ m (f :+: g) = MutVar (PrimState m) :.: (GRef_ m f :+: GRef_ m g)
+
+    gThawRef_ = \case
+      L1 x -> fmap Comp1 . newMutVar . L1 =<< gThawRef_ x
+      R1 x -> fmap Comp1 . newMutVar . R1 =<< gThawRef_ x
+    gFreezeRef_ (Comp1 r) = readMutVar r >>= \case
+      L1 v -> L1 <$> gFreezeRef_ v
+      R1 u -> R1 <$> gFreezeRef_ u
+    gCopyRef_ (Comp1 r) xy = readMutVar r >>= \case
+      L1 v -> case xy of
+        L1 x -> gCopyRef_ v x
+        R1 y -> writeMutVar r . R1 =<< gThawRef_ y
+      R1 u -> case xy of
+        L1 x -> writeMutVar r . L1 =<< gThawRef_ x
+        R1 y -> gCopyRef_ u y
+
+newtype GRef m a = GRef { unGRef :: GRef_ m (Rep a) () }
+
+gThawRef
+    :: (Generic a, GMutable m (Rep a))
+    => a
+    -> m (GRef m a)
+gThawRef = fmap GRef . gThawRef_ . from
+
+gFreezeRef
+    :: (Generic a, GMutable m (Rep a))
+    => GRef m a
+    -> m a
+gFreezeRef = fmap to . gFreezeRef_ . unGRef
+
+gCopyRef
+    :: (Generic a, GMutable m (Rep a))
+    => GRef m a
+    -> a
+    -> m ()
+gCopyRef (GRef v) x = gCopyRef_ v (from x)
