@@ -299,7 +299,7 @@ instance KnownNat n => Metric Double (H.R n) where
     norm_1    = H.norm_1
     norm_2    = H.norm_2
     quadrance = (**2) . H.norm_2
-instance (KnownNat n, Mutable m (H.R n)) => LinearInPlace m Double (H.R n)
+instance (PrimMonad m, KnownNat n) => LinearInPlace m Double (H.R n)
 
 instance (KnownNat n, KnownNat m) => Linear Double (H.L n m) where
     (.+.)   = (+)
@@ -312,7 +312,7 @@ instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
     norm_1    = UH.sumElements . H.extract
     norm_2    = UH.norm_2 . UH.flatten . H.extract
     quadrance = (**2) . norm_2
-instance (KnownNat n, KnownNat k, Mutable m (H.L n k)) => LinearInPlace m Double (H.L n k)
+instance (PrimMonad m, KnownNat n, KnownNat k) => LinearInPlace m Double (H.L n k)
 
 instance (Linear c a, Linear c b) => Linear c (a, b) where
 instance (Linear c a, Linear c b, Linear c d) => Linear c (a, b, d) where

@@ -39,10 +39,13 @@ import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Ratio
 import           GHC.Generics
-import qualified Data.Vector               as V
-import qualified Data.Vector.Generic       as VG
-import qualified Data.Vector.Generic.Sized as SVG
-import qualified Data.Vector.Mutable       as MV
+import           GHC.TypeNats
+import qualified Data.Vector                  as V
+import qualified Data.Vector.Generic          as VG
+import qualified Data.Vector.Generic.Sized    as SVG
+import qualified Data.Vector.Mutable          as MV
+import qualified Numeric.LinearAlgebra        as UH
+import qualified Numeric.LinearAlgebra.Static as H
 
 class Monad m => Mutable m a where
     type Ref m a = (v :: Type) | v -> a
@@ -109,6 +112,9 @@ instance (PrimMonad m, VG.Vector v a) => Mutable m (SVG.Vector v n a) where
     thawRef        = SVG.thaw
     freezeRef      = SVG.freeze
     copyRef        = SVG.copy
+
+instance (PrimMonad m, KnownNat n) => Mutable m (H.R n) where
+instance (PrimMonad m, KnownNat n, KnownNat k) => Mutable m (H.L n k) where
 
 instance Monad m => Mutable m () where
     type Ref m () = ()
