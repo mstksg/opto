@@ -30,12 +30,11 @@
 module Numeric.Opto.Ref (
     Mutable(..)
   , MutRef(..)
-  , GMutable, gThawRef, gFreezeRef, gCopyRef
+  , GMutable, GRef(..), gThawRef, gFreezeRef, gCopyRef
   ) where
 
 import           Control.Monad.Primitive
 import           Data.Complex
-import           Data.Functor.Identity
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Ratio
