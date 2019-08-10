@@ -12,6 +12,7 @@
 {-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -47,6 +48,7 @@ import           Data.Foldable
 import           Data.Function
 import           Data.Maybe
 import           Data.Semigroup
+import           Data.Vinyl hiding                 ((:~:))
 import           GHC.Generics                      (Generic)
 import           GHC.TypeLits
 import           Generics.OneLiner
@@ -55,6 +57,7 @@ import           Unsafe.Coerce
 import qualified Data.Vector.Generic               as VG
 import qualified Data.Vector.Generic.Mutable.Sized as SVGM
 import qualified Data.Vector.Generic.Sized         as SVG
+import qualified Data.Vinyl.Functor                as V
 import qualified Numeric.LinearAlgebra             as UH
 import qualified Numeric.LinearAlgebra.Static      as H
 
@@ -330,6 +333,43 @@ instance (Mutable m (a, b), Linear c a, Linear c b) => LinearInPlace m c (a, b)
 instance (Mutable m (a, b, d), Linear c a, Linear c b, Linear c d) => LinearInPlace m c (a, b, d)
 instance (Mutable m (a, b, d, e), Linear c a, Linear c b, Linear c d, Linear c e) => LinearInPlace m c (a, b, d, e)
 instance (Mutable m (a, b, d, e, f), Linear c a, Linear c b, Linear c d, Linear c e, Linear c f) => LinearInPlace m c (a, b, d, e, f)
+
+instance Linear c (f a) => Linear c (Rec f '[a]) where
+    x :& RNil .+. y :& RNil = (x .+. y) :& RNil
+    zeroL = zeroL :& RNil
+    c .* (x :& RNil) = (c .* x) :& RNil
+
+instance (Linear c (f a), Linear c (Rec f (b ': bs))) => Linear c (Rec f (a ': b ': bs)) where
+    x :& xs .+. y :& ys = (x .+. y) :& (xs .+. ys)
+    zeroL = zeroL :& zeroL
+    c .* (x :& xs) = (c .* x) :& (c .* xs)
+
+instance Metric c (f a) => Metric c (Rec f '[a]) where
+    (x :& RNil) <.> (y :& RNil) = x <.> y
+    norm_inf (x :& RNil) = norm_inf x
+    norm_0 (x :& RNil) = norm_0 x
+    norm_1 (x :& RNil) = norm_1 x
+    norm_2 (x :& RNil) = norm_2 x
+    quadrance (x :& RNil) = quadrance x
+
+instance (Floating c, Ord c, Metric c (f a), Metric c (Rec f (b ': bs))) => Metric c (Rec f (a ': b ': bs)) where
+    (<.>) = undefined
+    norm_inf (x :& xs) = norm_0 x `max` norm_0 xs
+    norm_0 (x :& xs) = norm_0 x + norm_0 xs
+    norm_1 (x :& xs) = norm_1 x + norm_1 xs
+    norm_2 = sqrt . quadrance
+    quadrance (x :& xs) = quadrance x + quadrance xs
+
+instance LinearInPlace m c (f a) => LinearInPlace m c (Rec f '[a]) where
+    (V.Compose (RefFor v) :& RNil) .+.= (x :& RNil)    = v .+.= x
+    (V.Compose (RefFor v) :& RNil) .*=  c              = v .*=  c
+    (V.Compose (RefFor v) :& RNil) .*+= (c, x :& RNil) = v .*+= (c, x)
+
+instance (LinearInPlace m c (f a), LinearInPlace m c (Rec f (b ': bs)), Mutable m (f b), ReifyConstraint (Mutable m) f bs, RMap bs, RApply bs, RecordToList bs)
+        => LinearInPlace m c (Rec f (a ': b ': bs)) where
+    (V.Compose (RefFor v) :& vs) .+.= (x :& xs)    = do v .+.= x; vs .+.= xs
+    (V.Compose (RefFor v) :& vs) .*=  c            = do v .*=  c; vs .*=  c
+    (V.Compose (RefFor v) :& vs) .*+= (c, x :& xs) = do v .*+= (c, x); vs .*+= (c, xs)
 
 -- | If @a@ and @b@ are both 'Linear' instances, then if @a@ is equal to
 -- @b@, their scalars @c@ and @d@ must also be equal.  This is necessary
