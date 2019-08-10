@@ -15,14 +15,11 @@
 {-# LANGUAGE ViewPatterns          #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 
-import           Control.Concurrent hiding                    (yield)
-import           Control.Concurrent.STM
 import           Control.DeepSeq
 import           Control.Lens hiding                          ((<.>))
 import           Control.Monad.Primitive
 import           Control.Monad.Trans.Maybe
 import           Data.Bitraversable
-import           Data.Conduit
 import           Data.Default
 import           Data.IDX
 import           Data.Traversable
@@ -162,38 +159,30 @@ main = MWC.withSystemRandom $ \g -> do
                             (oDataDir </> "t10k-labels-idx1-ubyte")
     putStrLn "Loaded data."
     net0 <- MWC.uniformR (-0.5, 0.5) g
-    n    <- getNumCapabilities
-    sampleQueue <- atomically $ newTBQueue 25000
 
     let o :: PrimMonad m => Opto m (R 784, R 10) Net
         o = adam def $
               bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y)
 
-        ro = def { roBatch = oBatch
-                 }
-
-        source  = sampleCollect sampleQueue Nothing dispEpoch train g
         runTest chnk net = printf "Error: %.2f%%" ((1 - score) * 100)
           where
             score = testNet chnk net
 
-        optimizer = case oMode of
-          OSingle -> source
-                  .| optoConduit ro net0 o
-          OParallel c s ->
-            let po      = def { poSplit = s }
-                source'
-                  | c         = optoConduitParChunk ro po net0 o source
-                  | otherwise = optoConduitPar      ro po net0 o source
-            in  source'
-        skipAmt = case oMode of
-          OSingle       -> oReport
-          OParallel _ s -> max 0 $ oReport `div` (n * s) - 1
+        ro = def { roBatch = oBatch
+                 }
+        so = def { soTestSet   = Just test
+                 , soEvaluate  = runTest
+                 , soSkipSamps = oReport
+                 }
 
-    runConduit $ optimizer
-              .| trainReport sampleQueue dispBatch skipAmt (simpleReport (Just test) runTest)
-              .| C.sinkNull
-
+    case oMode of
+      OSingle       -> simpleRunner so train SOSingle ro net0 o C.sinkNull g
+      OParallel c s -> do
+        let po = def { poSplit = s }
+        if c
+          then simpleRunner so train (SOParallel   po) ro net0 o C.sinkNull g
+          else simpleRunner so train (SOParChunked po) ro net0 o C.sinkNull g
+        
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
   where

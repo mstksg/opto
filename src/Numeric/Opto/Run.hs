@@ -287,6 +287,9 @@ optoLoop OL{..} = go 0
 -- 'optoConduit' ro x0 o .| 'C.lastDef' x0
 --   :: ConduitT r o m a
 -- @
+--
+-- Note that this emits /every single/ updated version of the value, but
+-- still only runs 'roReport' at the frequency of 'roFreq'.
 optoConduit
     :: Monad m
     => RunOpts m a                  -- ^ Runner options
