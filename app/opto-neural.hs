@@ -35,7 +35,6 @@ import           Numeric.Opto.Run.Simple
 import           Options.Applicative
 import           System.FilePath hiding                       ((<.>))
 import           Text.Printf
-import qualified Data.Conduit.Combinators                     as C
 import qualified Data.Vector.Generic                          as VG
 import qualified Numeric.LinearAlgebra                        as HM
 import qualified Numeric.LinearAlgebra.Static                 as H
@@ -176,13 +175,13 @@ main = MWC.withSystemRandom $ \g -> do
                  }
 
     case oMode of
-      OSingle       -> simpleRunner so train SOSingle ro net0 o C.sinkNull g
+      OSingle       -> simpleRunner so train SOSingle ro net0 o g
       OParallel c s -> do
         let po = def { poSplit = s }
         if c
-          then simpleRunner so train (SOParallel   po) ro net0 o C.sinkNull g
-          else simpleRunner so train (SOParChunked po) ro net0 o C.sinkNull g
-        
+          then simpleRunner so train (SOParallel   po) ro net0 o g
+          else simpleRunner so train (SOParChunked po) ro net0 o g
+
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)
   where

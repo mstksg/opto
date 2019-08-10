@@ -129,13 +129,14 @@ trainReport sampleQueue db n reportFunc =
         yield net
 
 -- | Options for 'simpleRunner'.  'def' gives sensible defaults.
-data SimpleOpts m i a = SO
+data SimpleOpts m i a b = SO
     { soEpochs    :: Maybe Int          -- ^ How many epochs (default: Nothing, forever)
     , soDispEpoch :: Int -> m ()        -- ^ Display a new epoch to the screen (default: "[Epoch %d]")
     , soDispBatch :: Int -> m ()        -- ^ Display a new report batch to the screen (defualt: "(Batch %d)")
     , soTestSet   :: Maybe [i]          -- ^ Test set to validate results (default: Nothing)
     , soSkipSamps :: Int                -- ^ Number of samples to skip per report batch (default: 1000)
     , soEvaluate  :: [i] -> a -> String     -- ^ Evaluate a model against samples and report accuracy. (default: do nothing)
+    , soSink      :: ConduitT a Void m b    -- ^ Collect the optimized values (default: 'C.sinkNull', ignore them)
     }
 
 -- | Choose a concurrency strategy for your runner.
@@ -162,7 +163,7 @@ runSOOptimizer = \case
     SOParallel po   -> \ro x0 o -> optoConduitPar ro po x0 o
     SOParChunked po -> \ro x0 o -> optoConduitParChunk ro po x0 o
 
-instance MonadIO m => Default (SimpleOpts m i a) where
+instance (MonadIO m, Default b) => Default (SimpleOpts m i a b) where
     def = SO
       { soEpochs    = Nothing
       , soDispEpoch = dispEpoch
@@ -170,6 +171,7 @@ instance MonadIO m => Default (SimpleOpts m i a) where
       , soTestSet   = Nothing
       , soSkipSamps = 1000
       , soEvaluate  = \_ _ -> "<unevaluated>"
+      , soSink      = def <$ C.sinkNull
       }
 
 -- | Integrate 'sampleCollect' and 'trainReport' together, automatically
@@ -177,16 +179,15 @@ instance MonadIO m => Default (SimpleOpts m i a) where
 -- 'SimpleOpts'.
 simpleRunner
     :: forall m t a b n. (MonadIO m, PrimMonad m, NFData a, MonoFoldable t)
-    => SimpleOpts m (Element t) a       -- ^ Options
+    => SimpleOpts m (Element t) a b     -- ^ Options
     -> t                                -- ^ Collection of samples
     -> SOOptimizer m n (Element t) a    -- ^ Choice of optimizer concurrency strategy
     -> RunOpts m a                      -- ^ Runner options
     -> a                                -- ^ Initial value
     -> Opto n (Element t) a             -- ^ Optimizer
-    -> ConduitT a Void m b              -- ^ Sink to collect optimized values (to ignore, use 'C.sinkNull')
     -> MWC.Gen (PrimState m)            -- ^ Random generator
     -> m b
-simpleRunner SO{..} samps soo ro x0 o sinker g = do
+simpleRunner SO{..} samps soo ro x0 o g = do
     sampleQueue <- liftIO . atomically $ newTBQueue (fromIntegral soSkipSamps)
     skipAmt     <- liftIO $ case soo of
       SOSingle        -> pure soSkipSamps
@@ -199,7 +200,7 @@ simpleRunner SO{..} samps soo ro x0 o sinker g = do
 
     runConduit $ optimizer
               .| trainReport sampleQueue soDispBatch skipAmt reporter
-              .| sinker
+              .| soSink
   where
     getSkip s = getNumCapabilities <&> \n ->
       max 0 $ (soSkipSamps `div` (n * s)) - 1
