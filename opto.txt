@@ -12,62 +12,81 @@
 
 -- | Abstract over different types for mutable references of values.
 module Numeric.Opto.Ref
-
--- | Abstraction over types of mutable references for values. A
---   <tt><a>Ref</a> m a v</tt> means that a <tt>v</tt> is a mutable
---   reference to an <tt>a</tt>, and we may update<i>write</i>modify
---   <tt>v</tt> in context <tt>m</tt>.
---   
---   This allows us to reat mutable vectors and in-place mutable numbers or
---   records in the same way.
-class Monad m => Ref m a v | v -> a, m a -> v
-
--- | Initialize a mutable reference with a given value
-thawRef :: Ref m a v => a -> m v
-
--- | Read an immutable value back from a mutable reference
-freezeRef :: Ref m a v => v -> m a
-
--- | Copy an immutable value into a mutable reference
-copyRef :: Ref m a v => v -> a -> m ()
+class Monad m => Mutable m a where {
+    type family Ref m a = (v :: Type) | v -> a;
+    type Ref m a = MutVar (PrimState m) a;
+}
+thawRef :: Mutable m a => a -> m (Ref m a)
+freezeRef :: Mutable m a => Ref m a -> m a
+copyRef :: Mutable m a => Ref m a -> a -> m ()
 
 -- | Apply a pure function on an immutable value onto a value stored in a
 --   mutable reference.
-modifyRef :: Ref m a v => v -> (a -> a) -> m ()
+modifyRef :: Mutable m a => Ref m a -> (a -> a) -> m ()
 
 -- | <a>modifyRef</a>, but forces the result before storing it back in the
 --   reference.
-modifyRef' :: Ref m a v => v -> (a -> a) -> m ()
+modifyRef' :: Mutable m a => Ref m a -> (a -> a) -> m ()
 
 -- | Apply a pure function on an immutable value onto a value stored in a
 --   mutable reference, returning a result value from that function.
-updateRef :: Ref m a v => v -> (a -> (a, b)) -> m b
+updateRef :: Mutable m a => Ref m a -> (a -> (a, b)) -> m b
 
 -- | <a>updateRef</a>, but forces the updated value before storing it back
 --   in the reference.
-updateRef' :: Ref m a v => v -> (a -> (a, b)) -> m b
+updateRef' :: Mutable m a => Ref m a -> (a -> (a, b)) -> m b
+thawRef :: (Mutable m a, Ref m a ~ MutVar (PrimState m) a, PrimMonad m) => a -> m (Ref m a)
+freezeRef :: (Mutable m a, Ref m a ~ MutVar (PrimState m) a, PrimMonad m) => Ref m a -> m a
+copyRef :: (Mutable m a, Ref m a ~ MutVar (PrimState m) a, PrimMonad m) => Ref m a -> a -> m ()
 
--- | Initialize a mutable reference with a given value
-thawRef :: (Ref m a v, PrimMonad m, v ~ MutVar (PrimState m) a) => a -> m v
+-- | Newtype wrapper that can provide any type with a <a>Mutable</a>
+--   instance. Can be useful for avoiding orphan instances.
+newtype MutRef a
+MutRef :: a -> MutRef a
+[runMutRef] :: MutRef a -> a
+class Monad m => GMutable m f
+newtype GRef m a
+GRef :: GRef_ m (Rep a) () -> GRef m a
+[unGRef] :: GRef m a -> GRef_ m (Rep a) ()
+gThawRef :: (Generic a, GMutable m (Rep a)) => a -> m (GRef m a)
+gFreezeRef :: (Generic a, GMutable m (Rep a)) => GRef m a -> m a
+gCopyRef :: (Generic a, GMutable m (Rep a)) => GRef m a -> a -> m ()
 
--- | Read an immutable value back from a mutable reference
-freezeRef :: (Ref m a v, PrimMonad m, v ~ MutVar (PrimState m) a) => v -> m a
+-- | If you can provice a natural transformation from <tt>m</tt> to
+--   <tt>n</tt>, you should be able to use a value as if it had
+--   <tt><a>Mutable</a> n a</tt> if you have <tt><a>Mutable</a> m a</tt>.
+reMutable :: forall m n a r. (Mutable m a, Monad n) => (forall x. m x -> n x) -> (Mutable n a => r) -> r
 
--- | Copy an immutable value into a mutable reference
-copyRef :: (Ref m a v, PrimMonad m, v ~ MutVar (PrimState m) a) => v -> a -> m ()
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Types.Int (Data.Primitive.MutVar.MutVar s GHC.Types.Int)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Integer.Type.Integer (Data.Primitive.MutVar.MutVar s GHC.Integer.Type.Integer)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Natural.Natural (Data.Primitive.MutVar.MutVar s GHC.Natural.Natural)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (GHC.Real.Ratio a) (Data.Primitive.MutVar.MutVar s (GHC.Real.Ratio a))
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Types.Float (Data.Primitive.MutVar.MutVar s GHC.Types.Float)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m GHC.Types.Double (Data.Primitive.MutVar.MutVar s GHC.Types.Double)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Either.Either a b) (Data.Primitive.MutVar.MutVar s (Data.Either.Either a b))
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s) => Numeric.Opto.Ref.Ref m (Data.Vector.Vector a) (Data.Vector.Mutable.MVector s a)
-instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Mutable v Data.Type.Equality.~ mv, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Ref m (Data.Vector.Generic.Sized.Internal.Vector v n a) (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a)
-instance GHC.Base.Monad m => Numeric.Opto.Ref.Ref m () ()
-instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m a u, Numeric.Opto.Ref.Ref m b v) => Numeric.Opto.Ref.Ref m (a, b) (u, v)
-instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m a u, Numeric.Opto.Ref.Ref m b v, Numeric.Opto.Ref.Ref m c w) => Numeric.Opto.Ref.Ref m (a, b, c) (u, v, w)
-instance (GHC.Base.Monad m, Numeric.Opto.Ref.Ref m a u, Numeric.Opto.Ref.Ref m b v, Numeric.Opto.Ref.Ref m c w, Numeric.Opto.Ref.Ref m d j) => Numeric.Opto.Ref.Ref m (a, b, c, d) (u, v, w, j)
+-- | If you can provice a natural transformation from <tt>m</tt> to
+--   <tt>n</tt>, then <tt><a>Mutable</a> m a</tt> should also imply
+--   <tt><a>Mutable</a> n a</tt>.
+reMutableConstraint :: forall m n a. (Mutable m a, Monad n) => (forall x. m x -> n x) -> Mutable m a :- Mutable n a
+newtype ReMutable (s :: Type) m a
+ReMutable :: a -> ReMutable m a
+newtype ReMutableTrans m n
+RMT :: (forall x. m x -> n x) -> ReMutableTrans m n
+[runRMT] :: ReMutableTrans m n -> forall x. m x -> n x
+instance (GHC.Base.Monad n, Numeric.Opto.Ref.Mutable m a, Data.Reflection.Reifies s (Numeric.Opto.Ref.ReMutableTrans m n)) => Numeric.Opto.Ref.Mutable n (Numeric.Opto.Ref.ReMutable s m a)
+instance Numeric.Opto.Ref.Mutable m c => Numeric.Opto.Ref.GMutable m (GHC.Generics.K1 i c)
+instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:*: g)
+instance Numeric.Opto.Ref.GMutable m f => Numeric.Opto.Ref.GMutable m (GHC.Generics.M1 i c f)
+instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g, Control.Monad.Primitive.PrimMonad m) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:+: g)
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Numeric.Opto.Ref.MutRef a)
+instance Data.Vinyl.XRec.IsoHKD Numeric.Opto.Ref.MutRef a
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Types.Int
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Integer.Type.Integer
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (GHC.Real.Ratio a)
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Types.Float
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Types.Double
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Data.Complex.Complex a)
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Data.Vector.Vector a)
+instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Mutable m (Data.Vector.Generic.Sized.Internal.Vector v n a)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n) => Numeric.Opto.Ref.Mutable m (Internal.Static.R n)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.L n k)
+instance GHC.Base.Monad m => Numeric.Opto.Ref.Mutable m ()
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m a, Numeric.Opto.Ref.Mutable m b) => Numeric.Opto.Ref.Mutable m (a, b)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m a, Numeric.Opto.Ref.Mutable m b, Numeric.Opto.Ref.Mutable m c) => Numeric.Opto.Ref.Mutable m (a, b, c)
+instance (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m a, Numeric.Opto.Ref.Mutable m b, Numeric.Opto.Ref.Mutable m c, Numeric.Opto.Ref.Mutable m d) => Numeric.Opto.Ref.Mutable m (a, b, c, d)
 
 
 -- | Conduits that are useful for sampling and running optimizers.
@@ -265,23 +284,29 @@ gQuadrance :: forall c a. (ADT a, Constraints a (Metric c), Num c) => a -> c
 --   Inspired by the BLAS Level 1 API. A <tt><a>LinearInPlace</a> m v c
 --   a</tt> means that <tt>v</tt> is a mutable reference to an <tt>a</tt>
 --   that can be updated as an action in monad <tt>m</tt>.
-class (Ref m a v, Linear c a) => LinearInPlace m v c a
+class (Mutable m a, Linear c a) => LinearInPlace m c a
 
 -- | Add a value in-place.
-(.+.=) :: LinearInPlace m v c a => v -> a -> m ()
+(.+.=) :: LinearInPlace m c a => Ref m a -> a -> m ()
 
 -- | Scale a value in-place.
-(.*=) :: LinearInPlace m v c a => v -> c -> m ()
+(.*=) :: LinearInPlace m c a => Ref m a -> c -> m ()
 
 -- | Add a scaled value in-place.
-(.*+=) :: LinearInPlace m v c a => v -> (c, a) -> m ()
+(.*+=) :: LinearInPlace m c a => Ref m a -> (c, a) -> m ()
 infix 4 .+.=
 infix 4 .*=
 infix 4 .*+=
 
 -- | Given some starting reference <tt>v</tt>, add every item in a foldable
 --   container into that reference in-place.
-sumLinearInPlace :: (LinearInPlace m v c a, Foldable t) => v -> t a -> m ()
+sumLinearInPlace :: (LinearInPlace m c a, Foldable t) => Ref m a -> t a -> m ()
+
+-- | If <tt>a</tt> and <tt>b</tt> are both <a>Linear</a> instances, then if
+--   <tt>a</tt> is equal to <tt>b</tt>, their scalars <tt>c</tt> and
+--   <tt>d</tt> must also be equal. This is necessary because GHC isn't
+--   happy with the functional dependency for some reason.
+linearWit :: forall a c d. (Linear c a, Linear d a) => c :~: d
 instance Data.Data.Data a => Data.Data.Data (Numeric.Opto.Update.LinearNum a)
 instance GHC.Generics.Generic (Numeric.Opto.Update.LinearNum a)
 instance GHC.Float.RealFloat a => GHC.Float.RealFloat (Numeric.Opto.Update.LinearNum a)
@@ -314,19 +339,19 @@ instance GHC.Float.RealFloat a => Numeric.Opto.Update.Metric (Data.Complex.Compl
 instance Control.DeepSeq.NFData a => Control.DeepSeq.NFData (Numeric.Opto.Update.LinearNum a)
 instance GHC.Num.Num a => Numeric.Opto.Update.Linear a (Numeric.Opto.Update.LinearNum a)
 instance GHC.Num.Num a => Numeric.Opto.Update.Metric a (Numeric.Opto.Update.LinearNum a)
-instance Numeric.Opto.Ref.Ref m GHC.Types.Int v => Numeric.Opto.Update.LinearInPlace m v GHC.Types.Int GHC.Types.Int
-instance Numeric.Opto.Ref.Ref m GHC.Integer.Type.Integer v => Numeric.Opto.Update.LinearInPlace m v GHC.Integer.Type.Integer GHC.Integer.Type.Integer
-instance Numeric.Opto.Ref.Ref m GHC.Real.Rational v => Numeric.Opto.Update.LinearInPlace m v GHC.Real.Rational GHC.Real.Rational
-instance Numeric.Opto.Ref.Ref m GHC.Types.Float v => Numeric.Opto.Update.LinearInPlace m v GHC.Types.Float GHC.Types.Float
-instance Numeric.Opto.Ref.Ref m GHC.Types.Double v => Numeric.Opto.Update.LinearInPlace m v GHC.Types.Double GHC.Types.Double
-instance (Numeric.Opto.Ref.Ref m (Data.Complex.Complex a) v, GHC.Float.RealFloat a) => Numeric.Opto.Update.LinearInPlace m v (Data.Complex.Complex a) (Data.Complex.Complex a)
-instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, GHC.Num.Num a, mv Data.Type.Equality.~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.LinearInPlace m (Data.Vector.Generic.Mutable.Sized.Internal.MVector mv n s a) a (Data.Vector.Generic.Sized.Internal.Vector v n a)
-instance (GHC.TypeNats.KnownNat n, Numeric.Opto.Ref.Ref m (Internal.Static.R n) v) => Numeric.Opto.Update.LinearInPlace m v GHC.Types.Double (Internal.Static.R n)
-instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k, Numeric.Opto.Ref.Ref m (Internal.Static.L n k) v) => Numeric.Opto.Update.LinearInPlace m v GHC.Types.Double (Internal.Static.L n k)
-instance (Numeric.Opto.Ref.Ref m (a, b) v, Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b) => Numeric.Opto.Update.LinearInPlace m v c (a, b)
-instance (Numeric.Opto.Ref.Ref m (a, b, d) v, Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d) => Numeric.Opto.Update.LinearInPlace m v c (a, b, d)
-instance (Numeric.Opto.Ref.Ref m (a, b, d, e) v, Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d, Numeric.Opto.Update.Linear c e) => Numeric.Opto.Update.LinearInPlace m v c (a, b, d, e)
-instance (Numeric.Opto.Ref.Ref m (a, b, d, e, f) v, Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d, Numeric.Opto.Update.Linear c e, Numeric.Opto.Update.Linear c f) => Numeric.Opto.Update.LinearInPlace m v c (a, b, d, e, f)
+instance Numeric.Opto.Ref.Mutable m GHC.Types.Int => Numeric.Opto.Update.LinearInPlace m GHC.Types.Int GHC.Types.Int
+instance Numeric.Opto.Ref.Mutable m GHC.Integer.Type.Integer => Numeric.Opto.Update.LinearInPlace m GHC.Integer.Type.Integer GHC.Integer.Type.Integer
+instance Numeric.Opto.Ref.Mutable m GHC.Real.Rational => Numeric.Opto.Update.LinearInPlace m GHC.Real.Rational GHC.Real.Rational
+instance Numeric.Opto.Ref.Mutable m GHC.Types.Float => Numeric.Opto.Update.LinearInPlace m GHC.Types.Float GHC.Types.Float
+instance Numeric.Opto.Ref.Mutable m GHC.Types.Double => Numeric.Opto.Update.LinearInPlace m GHC.Types.Double GHC.Types.Double
+instance (Numeric.Opto.Ref.Mutable m (Data.Complex.Complex a), GHC.Float.RealFloat a) => Numeric.Opto.Update.LinearInPlace m (Data.Complex.Complex a) (Data.Complex.Complex a)
+instance (Control.Monad.Primitive.PrimMonad m, Control.Monad.Primitive.PrimState m Data.Type.Equality.~ s, GHC.Num.Num a, mv Data.Type.Equality.~ Data.Vector.Generic.Base.Mutable v, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.LinearInPlace m a (Data.Vector.Generic.Sized.Internal.Vector v n a)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.LinearInPlace m GHC.Types.Double (Internal.Static.R n)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k) => Numeric.Opto.Update.LinearInPlace m GHC.Types.Double (Internal.Static.L n k)
+instance (Numeric.Opto.Ref.Mutable m (a, b), Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b) => Numeric.Opto.Update.LinearInPlace m c (a, b)
+instance (Numeric.Opto.Ref.Mutable m (a, b, d), Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d) => Numeric.Opto.Update.LinearInPlace m c (a, b, d)
+instance (Numeric.Opto.Ref.Mutable m (a, b, d, e), Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d, Numeric.Opto.Update.Linear c e) => Numeric.Opto.Update.LinearInPlace m c (a, b, d, e)
+instance (Numeric.Opto.Ref.Mutable m (a, b, d, e, f), Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d, Numeric.Opto.Update.Linear c e, Numeric.Opto.Update.Linear c f) => Numeric.Opto.Update.LinearInPlace m c (a, b, d, e, f)
 instance (GHC.Float.Floating a, GHC.Classes.Ord a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Metric a (Data.Vector.Generic.Sized.Internal.Vector v n a)
 instance GHC.TypeNats.KnownNat n => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.R n)
 instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat m) => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.L n m)
@@ -354,10 +379,10 @@ type Diff a = a
 --   <tt>a</tt>, with respect to an <tt>r</tt> sample.
 type Grad m r a = r -> a -> m (Diff a)
 
--- | An <tt><a>Opto</a> m v r a</tt> represents a (potentially stateful)
---   in-place optimizer for values of type <tt>a</tt>, stored in mutable
---   references <tt>v</tt>, that can be run in a monad <tt>m</tt>. Each
---   optimization step requires an additional external "sample" <tt>r</tt>.
+-- | An <tt><a>Opto</a> m r a</tt> represents a (potentially stateful)
+--   in-place optimizer for values of type <tt>a</tt> that can be run in a
+--   monad <tt>m</tt>. Each optimization step requires an additional
+--   external "sample" <tt>r</tt>.
 --   
 --   Usually these should be defined to be polymorphic on <tt>m</tt>, so
 --   that it can be run in many different contexts in
@@ -365,12 +390,16 @@ type Grad m r a = r -> a -> m (Diff a)
 --   
 --   An <tt><a>Opto</a> m v () a</tt> is a "non-sampling" optimizer, where
 --   each optimization step doesn't require any external input.
-data Opto :: (Type -> Type) -> Type -> Type -> Type -> Type
-[MkOpto] :: forall s u m v r a c. (LinearInPlace m v c a, Ref m s u) => {oInit :: !s, oUpdate :: !u -> r -> a -> m (c, Diff a)} -> Opto m v r a
+data Opto :: (Type -> Type) -> Type -> Type -> Type
+[MkOpto] :: forall s m r a c. (LinearInPlace m c a, Mutable m s) => {oInit :: !s, oUpdate :: !Ref m s -> r -> a -> m (c, Diff a)} -> Opto m r a
 
 -- | (Contravariantly) map over the type of the external sample input of an
 --   <a>Opto</a>.
-mapSample :: (r -> s) -> Opto m v s a -> Opto m v r a
+mapSample :: (r -> s) -> Opto m s a -> Opto m r a
+
+-- | Map over the inner monad of an <a>Opto</a> by providing a natural
+--   transformation, and also a method to "convert" the references.
+mapOpto :: forall m n r a c. LinearInPlace n c a => (forall x. m x -> n x) -> (forall x. Ref n x -> Ref m x) -> Opto m r a -> Opto n r a
 
 -- | Create an <a>Opto</a> based on a (monadic) state-updating function,
 --   given an initial state and the state updating function. The function
@@ -380,13 +409,13 @@ mapSample :: (r -> s) -> Opto m v s a -> Opto m v r a
 --   
 --   The state is updated in a "copying" manner (by generating new values
 --   purely), without any in-place mutation.
-fromCopying :: (LinearInPlace m v c a, Ref m s u) => s -> (r -> a -> s -> m (c, Diff a, s)) -> Opto m v r a
+fromCopying :: (LinearInPlace m c a, Mutable m s) => s -> (r -> a -> s -> m (c, Diff a, s)) -> Opto m r a
 
 -- | Create a statless <a>Opto</a> based on a (monadic) optimizing
 --   function. The function takes the external <tt>r</tt> input and the
 --   current value <tt>a</tt> and returns a step to move <tt>a</tt> in and
 --   a factor to scale that step via.
-fromStateless :: LinearInPlace m v c a => (r -> a -> m (c, Diff a)) -> Opto m v r a
+fromStateless :: LinearInPlace m c a => (r -> a -> m (c, Diff a)) -> Opto m r a
 
 -- | Create a bona-fide <a>Grad</a> from a pure (non-monadic) sampling
 --   gradient function.
@@ -453,19 +482,19 @@ hoistParallelOpts :: (forall x. m x -> n x) -> ParallelOpts m a -> ParallelOpts 
 --   new sample. When the action produces <a>Nothing</a>, the running
 --   immediately terminates even if the stop condition has not yet been
 --   met.
-opto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
+opto :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m r a -> m a
 
 -- | A version of <a>opto</a> that also returns an updated optimizer state
 --   that can be resumed.
-opto' :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m (a, Opto m v r a)
+opto' :: Monad m => RunOpts m a -> m (Maybe r) -> a -> Opto m r a -> m (a, Opto m r a)
 
 -- | A version of <a>optoNonSampling</a> that also returns an updated
 --   optimizer state that can be resumed.
-optoNonSampling' :: Monad m => RunOpts m a -> a -> Opto m v () a -> m (a, Opto m v () a)
+optoNonSampling' :: Monad m => RunOpts m a -> a -> Opto m () a -> m (a, Opto m () a)
 
 -- | Run a non-sampling optimizer on some input until the stop condition is
 --   met.
-optoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
+optoNonSampling :: Monad m => RunOpts m a -> a -> Opto m () a -> m a
 
 -- | Given an optimizer and some initial value, produce a <a>ConduitT</a>
 --   that takes in samples and outputs each successively optimized versions
@@ -482,19 +511,22 @@ optoNonSampling :: Monad m => RunOpts m a -> a -> Opto m v () a -> m a
 --   <a>optoConduit</a> ro x0 o .| <a>lastDef</a> x0
 --     :: ConduitT r o m a
 --   </pre>
-optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m ()
+--   
+--   Note that this emits <i>every single</i> updated version of the value,
+--   but still only runs <a>roReport</a> at the frequency of <a>roFreq</a>.
+optoConduit :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) r a -> ConduitT r a m ()
 
 -- | A version of <a>optoConduit</a> that also returns an updated optimizer
 --   state that can be resumed.
-optoConduit' :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) v r a -> ConduitT r a m (Opto (ConduitT r a m) v r a)
+optoConduit' :: Monad m => RunOpts m a -> a -> Opto (ConduitT r a m) r a -> ConduitT r a m (Opto (ConduitT r a m) r a)
 
 -- | Convenient wrapper over <a>opto</a> to allow consumption over a list
 --   of samples.
-optoFold :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) v r a -> [r] -> m (a, [r])
+optoFold :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) r a -> [r] -> m (a, [r])
 
 -- | A version of <a>optoFold'</a> that also returns an updated optimizer
 --   state that can be resumed.
-optoFold' :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) v r a -> [r] -> m (a, [r], Opto (StateT [r] m) v r a)
+optoFold' :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) r a -> [r] -> m (a, [r], Opto (StateT [r] m) r a)
 
 -- | Run an optimizer in parallel on multiple threads on some value, given
 --   a (thread-safe) monadic action to produce each new sample.
@@ -518,20 +550,20 @@ optoFold' :: Monad m => RunOpts m a -> a -> Opto (StateT [r] m) v r a -> [r] -> 
 --   stop condition has not yet been met. If the stop condition is met, the
 --   value given to the stop condition will be used as the final result,
 --   ignoring all other thread pools.
-optoPar :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> m (Maybe r) -> a -> Opto m v r a -> m a
+optoPar :: forall m r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> m (Maybe r) -> a -> Opto m r a -> m a
 
 -- | A version of <a>optoPar</a> that performs a batch fetch for each
 --   thread's entire sample pool <i>before</i> beginning parallel
 --   optimization. This can be useful if the sampling is faster in batch
 --   amounts.
-optoParChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> (Int -> m [r]) -> a -> Opto (StateT [r] m) v r a -> m a
+optoParChunk :: forall m r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> (Int -> m [r]) -> a -> Opto (StateT [r] m) r a -> m a
 
 -- | Run a non-sampling optimizer in parallel on multiple threads on some
 --   value until the stop condition is met.
 --   
 --   See <a>optoPar</a> for a detailed description of how parallel
 --   optimization is implemented.
-optoParNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v () a -> m a
+optoParNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m () a -> m a
 
 -- | Given an optimizer, some initial value, and a conduit <i>source</i>,
 --   returns a conduit sorce that outputs succesively optimized versions of
@@ -548,13 +580,13 @@ optoParNonSampling :: MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a ->
 --   
 --   A value is emitted after every thread recombination/call of
 --   <a>poCombine</a>.
-optoConduitPar :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m v r a -> ConduitT () r m () -> ConduitT () a m ()
+optoConduitPar :: forall m r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto m r a -> ConduitT () r m () -> ConduitT () a m ()
 
 -- | A version of <a>optoConduitPar</a> that performs a batch fetch from
 --   the input source for each thread's entire sample pool <i>before</i>
 --   beginning parallel optimization. This can be useful if the source can
 --   produce values faster in batch amounts.
-optoConduitParChunk :: forall m v r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto (StateT [r] m) v r a -> ConduitT () r m () -> ConduitT () a m ()
+optoConduitParChunk :: forall m r a. MonadUnliftIO m => RunOpts m a -> ParallelOpts m a -> a -> Opto (StateT [r] m) r a -> ConduitT () r m () -> ConduitT () a m ()
 
 -- | The mean of the values in a non-empty container.
 mean :: (Foldable1 t, Fractional a) => t a -> a
@@ -566,6 +598,92 @@ instance GHC.Base.Applicative m => Data.Default.Class.Default (Numeric.Opto.Run.
 instance Data.Functor.Contravariant.Contravariant (Numeric.Opto.Run.RunOpts m)
 instance Data.Functor.Invariant.Invariant (Numeric.Opto.Run.RunOpts m)
 
+module Numeric.Opto.Run.Simple
+
+-- | A sample conduit <a>Source</a> that yields shuffled items in a
+--   collection repeatedly. Deposits the yielded items in a <a>TBQueue</a>,
+--   and takes a callback for reporting each new epoch (cycle of items in
+--   the collection).
+sampleCollect :: (PrimMonad m, MonadIO m, MonoFoldable t) => TBQueue (Element t) -> Maybe Int -> (Int -> m ()) -> t -> Gen (PrimState m) -> ConduitT i (Element t) m ()
+
+-- | A conduit that processes "trained" items and outputs a report every
+--   report batch, based on samples accumulated in a <a>TBQueue</a>. Meant
+--   to be used alongside <a>sampleCollect</a>. It passes through all of
+--   its input.
+--   
+--   <pre>
+--      <a>sampleCollect</a> sampleQueue epochs <a>dispEpoch</a> samples
+--   .| <a>optoConduit</a> ro model0 optimizer
+--   .| <a>trainReport</a> sampleQueue <a>dispBatch</a> 2500 (<a>simpleReport</a> (<a>Just</a> valSet) runTest)
+--   .| sink -- (other stuff you would want to do with trained models)
+--   </pre>
+trainReport :: (MonadIO m, NFData a) => TBQueue i -> (Int -> m ()) -> Int -> (NominalDiffTime -> [i] -> a -> m ()) -> ConduitT a a m ()
+
+-- | Simple reporter to give to <a>sampleCollect</a>:
+--   
+--   <pre>
+--   [Epoch 1]
+--   [Epoch 2]
+--   [Epoch 3]
+--   </pre>
+dispEpoch :: MonadIO m => Int -> m ()
+
+-- | Simple reporter to give to <a>trainReport</a>:
+--   
+--   <pre>
+--   (Batch 1)
+--   (Batch 2)
+--   (Batch 3)
+--   </pre>
+dispBatch :: MonadIO m => Int -> m ()
+
+-- | Simple reporting callback to provide <a>trainReport</a>.
+simpleReport :: MonadIO m => Maybe [i] -> ([i] -> a -> String) -> NominalDiffTime -> [i] -> a -> m ()
+
+-- | Integrate <a>sampleCollect</a> and <a>trainReport</a> together,
+--   automatically generating the sample queue and supplying all callbacks
+--   based on the <a>SimpleOpts</a>.
+simpleRunner :: forall m t a b n. (MonadIO m, PrimMonad m, NFData a, MonoFoldable t) => SimpleOpts m (Element t) a b -> t -> SOOptimizer m n (Element t) a -> RunOpts m a -> a -> Opto n (Element t) a -> Gen (PrimState m) -> m b
+
+-- | Options for <a>simpleRunner</a>. <a>def</a> gives sensible defaults.
+data SimpleOpts m i a b
+SO :: Maybe Int -> (Int -> m ()) -> (Int -> m ()) -> Maybe [i] -> Int -> ([i] -> a -> String) -> ConduitT a Void m b -> SimpleOpts m i a b
+
+-- | How many epochs (default: Nothing, forever)
+[soEpochs] :: SimpleOpts m i a b -> Maybe Int
+
+-- | Display a new epoch to the screen (default: "[Epoch %d]")
+[soDispEpoch] :: SimpleOpts m i a b -> Int -> m ()
+
+-- | Display a new report batch to the screen (defualt: "(Batch %d)")
+[soDispBatch] :: SimpleOpts m i a b -> Int -> m ()
+
+-- | Test set to validate results (default: Nothing)
+[soTestSet] :: SimpleOpts m i a b -> Maybe [i]
+
+-- | Number of samples to skip per report batch (default: 1000)
+[soSkipSamps] :: SimpleOpts m i a b -> Int
+
+-- | Evaluate a model against samples and report accuracy. (default: do
+--   nothing)
+[soEvaluate] :: SimpleOpts m i a b -> [i] -> a -> String
+
+-- | Collect the optimized values (default: <a>sinkNull</a>, ignore them)
+[soSink] :: SimpleOpts m i a b -> ConduitT a Void m b
+
+-- | Choose a concurrency strategy for your runner.
+data SOOptimizer :: (Type -> Type) -> (Type -> Type) -> Type -> Type -> Type
+
+-- | Single-threaded
+[SOSingle] :: SOOptimizer m (ConduitT i a m) i a
+
+-- | Parallel
+[SOParallel] :: MonadUnliftIO m => ParallelOpts m a -> SOOptimizer m m i a
+
+-- | Parallel chunked
+[SOParChunked] :: MonadUnliftIO m => ParallelOpts m a -> SOOptimizer m (StateT [i] m) i a
+instance (Control.Monad.IO.Class.MonadIO m, Data.Default.Class.Default b) => Data.Default.Class.Default (Numeric.Opto.Run.Simple.SimpleOpts m i a b)
+
 
 -- | Defining various numeric optimizers. Most of these implemtations are
 --   taken directly from
@@ -574,7 +692,7 @@ module Numeric.Opto.Optimizer
 
 -- | Steepest descent, acording to some learning rate. The simplest
 --   optimizer.
-steepestDescent :: LinearInPlace m v c a => c -> Grad m r a -> Opto m v r a
+steepestDescent :: LinearInPlace m c a => c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameter for <a>momentum</a>
 newtype Momentum c
@@ -582,7 +700,7 @@ Momentum :: c -> Momentum c
 [momentumDecay] :: Momentum c -> c
 
 -- | Steepest descent with momentum. (Qian, 1999)
-momentum :: forall m v r a c. LinearInPlace m v c a => Momentum c -> c -> Grad m r a -> Opto m v r a
+momentum :: forall m r a c. LinearInPlace m c a => Momentum c -> c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameter for <a>nesterov</a>
 newtype Nesterov c
@@ -590,7 +708,7 @@ Nesterov :: c -> Nesterov c
 [nesterovDecay] :: Nesterov c -> c
 
 -- | Nesterov accelerated gradient (NAG) (Nesterov, 1983)
-nesterov :: forall m v r a c. LinearInPlace m v c a => Nesterov c -> c -> Grad m r a -> Opto m v r a
+nesterov :: forall m r a c. LinearInPlace m c a => Nesterov c -> c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameters for <a>adagrad</a>
 data Adagrad c
@@ -600,7 +718,7 @@ Adagrad :: c -> c -> Adagrad c
 
 -- | Adaptive Gradient (Duchu, Hazan, Singer, 2011). Note that if the state
 --   is not reset periodically, updates tend to zero fairly quickly.
-adagrad :: forall m v r a c. (LinearInPlace m v c a, Floating a, Real c) => Adagrad c -> Grad m r a -> Opto m v r a
+adagrad :: forall m r a c. (LinearInPlace m c a, Floating a, Real c) => Adagrad c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameters for <a>adadelta</a>
 data Adadelta c
@@ -610,7 +728,7 @@ Adadelta :: c -> c -> Adadelta c
 
 -- | The Adadelta extension of Adagrad (Zeiler, 2012) that mitigates the
 --   decreasing learning rate.
-adadelta :: forall m v r a c. (LinearInPlace m v c a, Floating a, Real c) => Adadelta c -> Grad m r a -> Opto m v r a
+adadelta :: forall m r a c. (LinearInPlace m c a, Floating a, Real c) => Adadelta c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameters for <a>rmsProp</a>
 data RMSProp c
@@ -620,7 +738,7 @@ RMSProp :: c -> c -> c -> RMSProp c
 [rmsPropEps] :: RMSProp c -> c
 
 -- | RMSProp, as described by Geoff Hinton.
-rmsProp :: forall m v r a c. (LinearInPlace m v c a, Floating a, Real c) => RMSProp c -> Grad m r a -> Opto m v r a
+rmsProp :: forall m r a c. (LinearInPlace m c a, Floating a, Real c) => RMSProp c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameters for <a>adam</a>
 data Adam c
@@ -631,7 +749,7 @@ Adam :: !c -> !c -> !c -> !c -> Adam c
 [adamEps] :: Adam c -> !c
 
 -- | Adaptive Moment Estimation (Kingma, Ba, 2015)
-adam :: forall m v r a c vc. (RealFloat c, Floating a, LinearInPlace m v c a, Ref m c vc) => Adam c -> Grad m r a -> Opto m v r a
+adam :: forall m r a c. (RealFloat c, Floating a, LinearInPlace m c a, Mutable m c) => Adam c -> Grad m r a -> Opto m r a
 
 -- | Hyperparameters for <a>adaMax</a>
 data AdaMax c
@@ -642,7 +760,7 @@ AdaMax :: !c -> !c -> !c -> !c -> AdaMax c
 [adaMaxEps] :: AdaMax c -> !c
 
 -- | Adam variation (Kingma and Ba, 2015)
-adaMax :: forall m v r a c vc. (RealFloat c, Metric c a, LinearInPlace m v c a, Ref m c vc) => AdaMax c -> Grad m r a -> Opto m v r a
+adaMax :: forall m r a c. (RealFloat c, Metric c a, LinearInPlace m c a, Mutable m c) => AdaMax c -> Grad m r a -> Opto m r a
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Show.Show c => GHC.Show.Show (Numeric.Opto.Optimizer.AdaMax c)
 instance GHC.Classes.Eq c => GHC.Classes.Eq (Numeric.Opto.Optimizer.Adam c)
