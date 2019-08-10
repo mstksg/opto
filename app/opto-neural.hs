@@ -18,17 +18,13 @@
 import           Control.Concurrent hiding                    (yield)
 import           Control.Concurrent.STM
 import           Control.DeepSeq
-import           Control.Exception
 import           Control.Lens hiding                          ((<.>))
-import           Control.Monad
-import           Control.Monad.IO.Class
 import           Control.Monad.Primitive
 import           Control.Monad.Trans.Maybe
 import           Data.Bitraversable
 import           Data.Conduit
 import           Data.Default
 import           Data.IDX
-import           Data.Time
 import           Data.Traversable
 import           Data.Tuple
 import           GHC.Generics                                 (Generic)
@@ -38,11 +34,11 @@ import           Numeric.LinearAlgebra.Static.Backprop hiding ((<>))
 import           Numeric.OneLiner
 import           Numeric.Opto hiding                          ((<.>))
 import           Numeric.Opto.Backprop
+import           Numeric.Opto.Run.Simple
 import           Options.Applicative
 import           System.FilePath hiding                       ((<.>))
 import           Text.Printf
 import qualified Data.Conduit.Combinators                     as C
-import qualified Data.Text                                    as T
 import qualified Data.Vector.Generic                          as VG
 import qualified Numeric.LinearAlgebra                        as HM
 import qualified Numeric.LinearAlgebra.Static                 as H
@@ -173,49 +169,30 @@ main = MWC.withSystemRandom $ \g -> do
         o = adam def $
               bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y)
 
-        ro = def { roBatch = oBatch }
+        ro = def { roBatch = oBatch
+                 }
 
-        report b = do
-          yield $ printf "(Batch %d)\n" (b :: Int)
-          t0   <- liftIO getCurrentTime
-          _    <- liftIO . atomically $ flushTBQueue sampleQueue
-          net' <- mapM (liftIO . evaluate . force) =<< await
-          chnk <- liftIO . atomically $ flushTBQueue sampleQueue
-          t1   <- liftIO getCurrentTime
-          case net' of
-            Nothing  -> yield "Done!\n"
-            Just net -> do
-              yield $ printf "Trained on %d points in %s.\n"
-                             (length chnk)
-                             (show (t1 `diffUTCTime` t0))
-              let trainScore = testNet chnk net
-                  testScore  = testNet test net
-              yield $ printf "Training error:   %.2f%%\n" ((1 - trainScore) * 100)
-              yield $ printf "Validation error: %.2f%%\n" ((1 - testScore ) * 100)
-
-        source = forM_ [0..] (\e -> liftIO (printf "[Epoch %d]\n" (e :: Int))
-                                 >> C.yieldMany train .| shuffling g
-                             )
-              .| C.iterM (atomically . writeTBQueue sampleQueue)
+        source  = sampleCollect sampleQueue Nothing dispEpoch train g
+        runTest chnk net = printf "Error: %.2f%%" ((1 - score) * 100)
+          where
+            score = testNet chnk net
 
         optimizer = case oMode of
           OSingle -> source
                   .| optoConduit ro net0 o
-                  .| forever (C.drop (oReport - 1) *> (mapM_ yield =<< await))
           OParallel c s ->
             let po      = def { poSplit = s }
-                skipAmt = max 0 $ (oReport `div` (n * s)) - 1
                 source'
                   | c         = optoConduitParChunk ro po net0 o source
                   | otherwise = optoConduitPar      ro po net0 o source
             in  source'
-                  .| forever (C.drop skipAmt *> (mapM_ yield =<< await))
+        skipAmt = case oMode of
+          OSingle       -> oReport
+          OParallel _ s -> max 0 $ oReport `div` (n * s) - 1
 
     runConduit $ optimizer
-              .| mapM_ report [0..]
-              .| C.map T.pack
-              .| C.encodeUtf8
-              .| C.stdout
+              .| trainReport sampleQueue dispBatch skipAmt (simpleReport (Just test) runTest)
+              .| C.sinkNull
 
 testNet :: [(R 784, R 10)] -> Net -> Double
 testNet xs n = sum (map (uncurry test) xs) / fromIntegral (length xs)

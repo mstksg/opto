@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE BangPatterns           #-}
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE DeriveGeneric          #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -31,20 +33,30 @@ module Numeric.Opto.Ref (
     Mutable(..)
   , MutRef(..)
   , GMutable, GRef(..), gThawRef, gFreezeRef, gCopyRef
+  -- * ReMutable
+  , reMutable, reMutableConstraint
+  , ReMutable(..), ReMutableTrans(..)
   ) where
 
+-- import           Data.Vinyl.Core
+-- import qualified Numeric.LinearAlgebra     as UH
 import           Control.Monad.Primitive
+import           Data.Coerce
 import           Data.Complex
+import           Data.Constraint
+import           Data.Constraint.Unsafe
 import           Data.Kind
 import           Data.Primitive.MutVar
+import           Data.Proxy
 import           Data.Ratio
+import           Data.Reflection
 import           GHC.Generics
 import           GHC.TypeNats
 import qualified Data.Vector                  as V
 import qualified Data.Vector.Generic          as VG
 import qualified Data.Vector.Generic.Sized    as SVG
 import qualified Data.Vector.Mutable          as MV
-import qualified Numeric.LinearAlgebra        as UH
+import qualified Data.Vinyl.XRec              as X
 import qualified Numeric.LinearAlgebra.Static as H
 
 class Monad m => Mutable m a where
@@ -99,6 +111,8 @@ instance PrimMonad m => Mutable m (Complex a)
 newtype MutRef a = MutRef { runMutRef :: a }
 
 instance PrimMonad m => Mutable m (MutRef a)
+
+instance X.IsoHKD MutRef a
 
 instance PrimMonad m => Mutable m (V.Vector a) where
     type Ref m (V.Vector a) = MV.MVector (PrimState m) a
@@ -205,3 +219,53 @@ gCopyRef
     -> a
     -> m ()
 gCopyRef (GRef v) x = gCopyRef_ v (from x)
+
+newtype ReMutable (s :: Type) m a = ReMutable a
+newtype ReMutableTrans m n = RMT { runRMT :: forall x. m x -> n x }
+
+instance (Monad n, Mutable m a, Reifies s (ReMutableTrans m n)) => Mutable n (ReMutable s m a) where
+    type Ref n (ReMutable s m a) = ReMutable s m (Ref m a)
+    thawRef (ReMutable x) = runRMT rmt $ ReMutable <$> thawRef @m @a x
+      where
+        rmt = reflect (Proxy @s)
+    freezeRef (ReMutable v) = runRMT rmt $ ReMutable <$> freezeRef @m @a v
+      where
+        rmt = reflect (Proxy @s)
+    copyRef (ReMutable x) (ReMutable v) = runRMT rmt $ copyRef @m @a x v
+      where
+        rmt = reflect (Proxy @s)
+    modifyRef (ReMutable v) f = runRMT rmt $ modifyRef @m @a v (coerce f)
+      where
+        rmt = reflect (Proxy @s)
+    modifyRef' (ReMutable v) f = runRMT rmt $ modifyRef' @m @a v (coerce f)
+      where
+        rmt = reflect (Proxy @s)
+    updateRef (ReMutable v) f = runRMT rmt $ updateRef @m @a v (coerce f)
+      where
+        rmt = reflect (Proxy @s)
+    updateRef' (ReMutable v) f = runRMT rmt $ updateRef' @m @a v (coerce f)
+      where
+        rmt = reflect (Proxy @s)
+
+unsafeReMutable :: forall s m n a. Mutable n (ReMutable s m a) :- Mutable n a
+unsafeReMutable = unsafeCoerceConstraint
+
+-- | If you can provice a natural transformation from @m@ to @n@, you
+-- should be able to use a value as if it had @'Mutable' n a@ if you have
+-- @'Mutable' m a@.
+reMutable
+    :: forall m n a r. (Mutable m a, Monad n)
+    => (forall x. m x -> n x)
+    -> (Mutable n a => r)
+    -> r
+reMutable f x = x \\ reMutableConstraint @m @n @a f
+
+-- | If you can provice a natural transformation from @m@ to @n@, then
+-- @'Mutable' m a@ should also imply @'Mutable' n a@.
+reMutableConstraint
+    :: forall m n a. (Mutable m a, Monad n)
+    => (forall x. m x -> n x)
+    -> Mutable m a :- Mutable n a
+reMutableConstraint f = reify (RMT f) $ \(Proxy :: Proxy s) ->
+    case unsafeReMutable @s @m @n @a of
+      Sub Data.Constraint.Dict -> Sub Data.Constraint.Dict

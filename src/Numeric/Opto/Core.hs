@@ -28,13 +28,14 @@
 -- Core functionality for optimizers.
 module Numeric.Opto.Core (
     Diff, Grad, Opto(..)
-  , mapSample
+  , mapSample, mapOpto
   , fromCopying, fromStateless
   , pureGrad
   , nonSampling, pureNonSampling
   ) where
 
 import           Data.Kind
+import           Data.Type.Equality
 import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
@@ -65,6 +66,18 @@ data Opto :: (Type -> Type) -> Type -> Type -> Type where
                             )
               }
            -> Opto m r a
+
+-- | Map over the inner monad of an 'Opto' by providing a natural
+-- transformation, and also a method to "convert" the references.
+mapOpto
+    :: forall m n r a c. (LinearInPlace n c a)
+    => (forall x. m x -> n x)
+    -> (forall x. Ref n x -> Ref m x)
+    -> Opto m r a
+    -> Opto n r a
+mapOpto f g (MkOpto o (u :: Ref m s -> r -> b -> m (d, b))) =
+    reMutable @m @n @s f $ case linearWit @a @c @d of
+      Refl -> MkOpto @s @n @r @a @d o $ \r i x -> f (u (g r) i x)
 
 -- | (Contravariantly) map over the type of the external sample input of an
 -- 'Opto'.

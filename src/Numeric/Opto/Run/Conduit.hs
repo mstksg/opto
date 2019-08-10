@@ -1,6 +1,7 @@
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+
 -- |
 -- Module      : Numeric.Opto.Run.Conduit
 -- Copyright   : (c) Justin Le 2019
@@ -27,12 +28,12 @@ import           Control.Monad.Trans.Maybe
 import           Data.Conduit
 import           Data.Foldable
 import           Data.Maybe
-import qualified Data.Conduit.Combinators           as C
-import qualified Data.Vector                        as V
-import qualified Data.Vector.Generic                as VG
-import qualified Data.Vector.Generic.Mutable        as VG
-import qualified System.Random.MWC                  as MWC
-import qualified System.Random.MWC.Distributions    as MWC
+import qualified Data.Conduit.Combinators        as C
+import qualified Data.Vector                     as V
+import qualified Data.Vector.Generic             as VG
+import qualified Data.Vector.Generic.Mutable     as VG
+import qualified System.Random.MWC               as MWC
+import qualified System.Random.MWC.Distributions as MWC
 
 -- | Outputs a shuffled version of the input stream.  Keeps entire input
 -- stream in memory.
@@ -106,3 +107,5 @@ skipSampling λ g = go
       case mx of
         Just x  -> yield x >> go
         Nothing -> return ()
+
+

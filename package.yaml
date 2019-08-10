@@ -24,12 +24,16 @@ dependencies:
 - backprop >= 0.2
 - base >= 4.7 && < 5
 - conduit >= 1.3.0
+- constraints
 - data-default
 - deepseq
 - hmatrix
 - mwc-random
 - primitive
+- reflection
+- stm
 - transformers
+- unliftio-core
 - vector >= 0.12.0.2
 
 ghc-options:
@@ -49,8 +53,11 @@ library:
   - semigroupoids
   - stm-chans
   - stm-conduit
+  - text
+  - time
   - unliftio
   - vector-sized >= 1.0
+  - vinyl
 
 executables:
   opto-neural:

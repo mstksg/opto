@@ -34,6 +34,7 @@ module Numeric.Opto.Update (
     Linear(..), sumLinear, gAdd, gZeroL, gScale
   , Metric(..), gDot, gNorm_inf, gNorm_0, gNorm_1, gNorm_2, gQuadrance
   , LinearInPlace(..), sumLinearInPlace
+  , linearWit
   ) where
 
 import           Control.DeepSeq
@@ -50,6 +51,7 @@ import           GHC.Generics                      (Generic)
 import           GHC.TypeLits
 import           Generics.OneLiner
 import           Numeric.Opto.Ref
+import           Unsafe.Coerce
 import qualified Data.Vector.Generic               as VG
 import qualified Data.Vector.Generic.Mutable.Sized as SVGM
 import qualified Data.Vector.Generic.Sized         as SVG
@@ -328,3 +330,11 @@ instance (Mutable m (a, b), Linear c a, Linear c b) => LinearInPlace m c (a, b)
 instance (Mutable m (a, b, d), Linear c a, Linear c b, Linear c d) => LinearInPlace m c (a, b, d)
 instance (Mutable m (a, b, d, e), Linear c a, Linear c b, Linear c d, Linear c e) => LinearInPlace m c (a, b, d, e)
 instance (Mutable m (a, b, d, e, f), Linear c a, Linear c b, Linear c d, Linear c e, Linear c f) => LinearInPlace m c (a, b, d, e, f)
+
+-- | If @a@ and @b@ are both 'Linear' instances, then if @a@ is equal to
+-- @b@, their scalars @c@ and @d@ must also be equal.  This is necessary
+-- because GHC isn't happy with the functional dependency for some reason.
+linearWit
+    :: forall a c d. (Linear c a, Linear d a)
+    => (c :~: d)
+linearWit = unsafeCoerce Refl
