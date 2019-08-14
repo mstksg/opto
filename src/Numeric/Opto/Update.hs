@@ -1,24 +1,25 @@
-{-# LANGUAGE AllowAmbiguousTypes        #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveFoldable             #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DeriveTraversable          #-}
-{-# LANGUAGE DerivingVia                #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE AllowAmbiguousTypes           #-}
+{-# LANGUAGE DataKinds                     #-}
+{-# LANGUAGE DefaultSignatures             #-}
+{-# LANGUAGE DeriveDataTypeable            #-}
+{-# LANGUAGE DeriveFoldable                #-}
+{-# LANGUAGE DeriveFunctor                 #-}
+{-# LANGUAGE DeriveGeneric                 #-}
+{-# LANGUAGE DeriveTraversable             #-}
+{-# LANGUAGE DerivingVia                   #-}
+{-# LANGUAGE FlexibleContexts              #-}
+{-# LANGUAGE FlexibleInstances             #-}
+{-# LANGUAGE FunctionalDependencies        #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving    #-}
+{-# LANGUAGE MultiParamTypeClasses         #-}
+{-# LANGUAGE RankNTypes                    #-}
+{-# LANGUAGE ScopedTypeVariables           #-}
+{-# LANGUAGE StandaloneDeriving            #-}
+{-# LANGUAGE TypeApplications              #-}
+{-# LANGUAGE TypeFamilies                  #-}
+{-# LANGUAGE TypeOperators                 #-}
+{-# LANGUAGE UndecidableInstances          #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- |
 -- Module      : Numeric.Opto.Update
@@ -365,7 +366,14 @@ instance LinearInPlace m c (f a) => LinearInPlace m c (Rec f '[a]) where
     (V.Compose (RefFor v) :& RNil) .*=  c              = v .*=  c
     (V.Compose (RefFor v) :& RNil) .*+= (c, x :& RNil) = v .*+= (c, x)
 
-instance (LinearInPlace m c (f a), LinearInPlace m c (Rec f (b ': bs)), Mutable m (f b), ReifyConstraint (Mutable m) f bs, RMap bs, RApply bs, RecordToList bs)
+instance ( LinearInPlace m c (f a)
+         , LinearInPlace m c (Rec f (b ': bs))
+         , Mutable m (f b)
+         , ReifyConstraint (Mutable m) f bs
+         , RMap bs
+         , RApply bs
+         , RecordToList bs
+         )
         => LinearInPlace m c (Rec f (a ': b ': bs)) where
     (V.Compose (RefFor v) :& vs) .+.= (x :& xs)    = do v .+.= x; vs .+.= xs
     (V.Compose (RefFor v) :& vs) .*=  c            = do v .*=  c; vs .*=  c

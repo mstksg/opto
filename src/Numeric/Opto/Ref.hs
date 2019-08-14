@@ -39,8 +39,8 @@ module Numeric.Opto.Ref (
   , ReMutable(..), ReMutableTrans(..)
   ) where
 
--- import qualified Numeric.LinearAlgebra     as UH
 import           Control.Monad.Primitive
+import           Control.Monad.ST
 import           Data.Coerce
 import           Data.Complex
 import           Data.Constraint
@@ -51,16 +51,25 @@ import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.Ratio
 import           Data.Reflection
-import           Data.Vinyl                   as V
+import           Data.Vinyl                    as V
+import           Foreign.Storable
 import           GHC.Generics
 import           GHC.TypeNats
-import qualified Data.Vector                  as V
-import qualified Data.Vector.Generic          as VG
-import qualified Data.Vector.Generic.Sized    as SVG
-import qualified Data.Vector.Mutable          as MV
-import qualified Data.Vinyl.Functor           as V
-import qualified Data.Vinyl.XRec              as X
-import qualified Numeric.LinearAlgebra.Static as H
+import qualified Data.Vector                   as V
+import qualified Data.Vector.Generic           as VG
+import qualified Data.Vector.Generic.Sized     as SVG
+import qualified Data.Vector.Mutable           as MV
+import qualified Data.Vector.Primitive         as VP
+import qualified Data.Vector.Primitive.Mutable as MVP
+import qualified Data.Vector.Storable          as VS
+import qualified Data.Vector.Storable.Mutable  as MVS
+import qualified Data.Vector.Unboxed           as VU
+import qualified Data.Vector.Unboxed.Mutable   as MVU
+import qualified Data.Vinyl.Functor            as V
+import qualified Data.Vinyl.XRec               as X
+import qualified Numeric.LinearAlgebra         as HU
+import qualified Numeric.LinearAlgebra.Devel   as HU
+import qualified Numeric.LinearAlgebra.Static  as H
 
 class Monad m => Mutable m a where
     type Ref m a = (v :: Type) | v -> a
@@ -121,19 +130,43 @@ instance X.IsoHKD MutRef a
 
 instance PrimMonad m => Mutable m (V.Vector a) where
     type Ref m (V.Vector a) = MV.MVector (PrimState m) a
+    thawRef   = VG.thaw
+    freezeRef = VG.freeze
+    copyRef   = VG.copy
 
-    thawRef        = V.thaw
-    freezeRef      = V.freeze
-    copyRef        = V.copy
+instance (PrimMonad m, Storable a) => Mutable m (VS.Vector a) where
+    type Ref m (VS.Vector a) = MVS.MVector (PrimState m) a
+    thawRef   = VG.thaw
+    freezeRef = VG.freeze
+    copyRef   = VG.copy
+
+instance (PrimMonad m, VU.Unbox a) => Mutable m (VU.Vector a) where
+    type Ref m (VU.Vector a) = MVU.MVector (PrimState m) a
+    thawRef   = VG.thaw
+    freezeRef = VG.freeze
+    copyRef   = VG.copy
+
+instance (PrimMonad m, MVP.Prim a) => Mutable m (VP.Vector a) where
+    type Ref m (VP.Vector a) = MVP.MVector (PrimState m) a
+    thawRef   = VG.thaw
+    freezeRef = VG.freeze
+    copyRef   = VG.copy
 
 instance (PrimMonad m, VG.Vector v a) => Mutable m (SVG.Vector v n a) where
     type Ref m (SVG.Vector v n a) = SVG.MVector (VG.Mutable v) n (PrimState m) a
-    thawRef        = SVG.thaw
-    freezeRef      = SVG.freeze
-    copyRef        = SVG.copy
+    thawRef   = SVG.thaw
+    freezeRef = SVG.freeze
+    copyRef   = SVG.copy
 
-instance (PrimMonad m, KnownNat n) => Mutable m (H.R n) where
-instance (PrimMonad m, KnownNat n, KnownNat k) => Mutable m (H.L n k) where
+instance PrimMonad m => Mutable m (H.R n) where
+instance PrimMonad m => Mutable m (H.L n k) where
+
+instance (PrimMonad m, HU.Element a) => Mutable m (HU.Matrix a) where
+    type Ref m (HU.Matrix a) = HU.STMatrix (PrimState m) a
+
+    thawRef x   = stToPrim $ HU.thawMatrix x
+    freezeRef v = stToPrim $ HU.freezeMatrix v
+    copyRef v x = stToPrim $ HU.setMatrix v 0 0 x
 
 instance Monad m => Mutable m () where
     type Ref m () = ()
