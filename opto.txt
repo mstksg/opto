@@ -54,6 +54,9 @@ GRef :: GRef_ m (Rep a) () -> GRef m a
 gThawRef :: (Generic a, GMutable m (Rep a)) => a -> m (GRef m a)
 gFreezeRef :: (Generic a, GMutable m (Rep a)) => GRef m a -> m a
 gCopyRef :: (Generic a, GMutable m (Rep a)) => GRef m a -> a -> m ()
+newtype RecRef m f a
+RecRef :: Ref m (f a) -> RecRef m f a
+[recRef] :: RecRef m f a -> Ref m (f a)
 
 -- | If you can provice a natural transformation from <tt>m</tt> to
 --   <tt>n</tt>, you should be able to use a value as if it had
@@ -70,13 +73,14 @@ newtype ReMutableTrans m n
 RMT :: (forall x. m x -> n x) -> ReMutableTrans m n
 [runRMT] :: ReMutableTrans m n -> forall x. m x -> n x
 instance (GHC.Base.Monad n, Numeric.Opto.Ref.Mutable m a, Data.Reflection.Reifies s (Numeric.Opto.Ref.ReMutableTrans m n)) => Numeric.Opto.Ref.Mutable n (Numeric.Opto.Ref.ReMutable s m a)
+instance forall u (m :: * -> *) (f :: u -> *). GHC.Base.Monad m => Numeric.Opto.Ref.Mutable m (Data.Vinyl.Core.Rec f '[])
+instance forall a1 (m :: * -> *) (f :: a1 -> *) (a2 :: a1) (as :: [a1]). (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m (f a2), Numeric.Opto.Ref.Mutable m (Data.Vinyl.Core.Rec f as), Numeric.Opto.Ref.Ref m (Data.Vinyl.Core.Rec f as) Data.Type.Equality.~ Data.Vinyl.Core.Rec (Numeric.Opto.Ref.RecRef m f) as) => Numeric.Opto.Ref.Mutable m (Data.Vinyl.Core.Rec f (a2 : as))
 instance Numeric.Opto.Ref.Mutable m c => Numeric.Opto.Ref.GMutable m (GHC.Generics.K1 i c)
 instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:*: g)
 instance Numeric.Opto.Ref.GMutable m f => Numeric.Opto.Ref.GMutable m (GHC.Generics.M1 i c f)
 instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g, Control.Monad.Primitive.PrimMonad m) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:+: g)
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Numeric.Opto.Ref.MutRef a)
 instance Data.Vinyl.XRec.IsoHKD Numeric.Opto.Ref.MutRef a
-instance forall u (m :: * -> *) (f :: u -> *) (as :: [u]). (GHC.Base.Monad m, Data.Vinyl.Core.ReifyConstraint (Numeric.Opto.Ref.Mutable m) f as, Data.Vinyl.Core.RMap as, Data.Vinyl.Core.RApply as, Data.Vinyl.Core.RecordToList as) => Numeric.Opto.Ref.Mutable m (Data.Vinyl.Core.Rec f as)
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Types.Int
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Integer.Type.Integer
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (GHC.Real.Ratio a)
@@ -361,7 +365,7 @@ instance (Numeric.Opto.Ref.Mutable m (a, b, d), Numeric.Opto.Update.Linear c a, 
 instance (Numeric.Opto.Ref.Mutable m (a, b, d, e), Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d, Numeric.Opto.Update.Linear c e) => Numeric.Opto.Update.LinearInPlace m c (a, b, d, e)
 instance (Numeric.Opto.Ref.Mutable m (a, b, d, e, f), Numeric.Opto.Update.Linear c a, Numeric.Opto.Update.Linear c b, Numeric.Opto.Update.Linear c d, Numeric.Opto.Update.Linear c e, Numeric.Opto.Update.Linear c f) => Numeric.Opto.Update.LinearInPlace m c (a, b, d, e, f)
 instance Numeric.Opto.Update.LinearInPlace m c (f a) => Numeric.Opto.Update.LinearInPlace m c (Data.Vinyl.Core.Rec f '[a])
-instance (Numeric.Opto.Update.LinearInPlace m c (f a), Numeric.Opto.Update.LinearInPlace m c (Data.Vinyl.Core.Rec f (b : bs)), Numeric.Opto.Ref.Mutable m (f b), Data.Vinyl.Core.ReifyConstraint (Numeric.Opto.Ref.Mutable m) f bs, Data.Vinyl.Core.RMap bs, Data.Vinyl.Core.RApply bs, Data.Vinyl.Core.RecordToList bs) => Numeric.Opto.Update.LinearInPlace m c (Data.Vinyl.Core.Rec f (a : b : bs))
+instance (Numeric.Opto.Update.LinearInPlace m c (f a), Numeric.Opto.Update.LinearInPlace m c (Data.Vinyl.Core.Rec f (b : bs))) => Numeric.Opto.Update.LinearInPlace m c (Data.Vinyl.Core.Rec f (a : b : bs))
 instance (GHC.Float.Floating a, GHC.Classes.Ord a, Data.Vector.Generic.Base.Vector v a, GHC.TypeNats.KnownNat n) => Numeric.Opto.Update.Metric a (Data.Vector.Generic.Sized.Internal.Vector v n a)
 instance GHC.TypeNats.KnownNat n => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.R n)
 instance (GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat m) => Numeric.Opto.Update.Metric GHC.Types.Double (Internal.Static.L n m)
