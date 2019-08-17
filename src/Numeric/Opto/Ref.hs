@@ -34,6 +34,7 @@ module Numeric.Opto.Ref (
   , MutRef(..)
   , RefFor(..)
   , GMutable, GRef(..), gThawRef, gFreezeRef, gCopyRef
+  , RecRef(..)
   -- * ReMutable
   , reMutable, reMutableConstraint
   , ReMutable(..), ReMutableTrans(..)
@@ -44,7 +45,6 @@ import           Data.Coerce
 import           Data.Complex
 import           Data.Constraint
 import           Data.Constraint.Unsafe
-import           Data.Foldable
 import           Data.Kind
 import           Data.Primitive.MutVar
 import           Data.Proxy
@@ -63,7 +63,6 @@ import qualified Data.Vector.Storable          as VS
 import qualified Data.Vector.Storable.Mutable  as MVS
 import qualified Data.Vector.Unboxed           as VU
 import qualified Data.Vector.Unboxed.Mutable   as MVU
-import qualified Data.Vinyl.Functor            as V
 import qualified Data.Vinyl.XRec               as X
 import qualified Numeric.LinearAlgebra         as HU
 import qualified Numeric.LinearAlgebra.Devel   as HU
@@ -255,22 +254,23 @@ gCopyRef
     -> m ()
 gCopyRef (GRef v) x = gCopyRef_ v (from x)
 
-instance (Monad m, ReifyConstraint (Mutable m) f as, RMap as, RApply as, RecordToList as) => Mutable m (Rec f as) where
-    type Ref m (Rec f as) = Rec (RefFor m V.:. f) as
+newtype RecRef m f a = RecRef { recRef :: Ref m (f a) }
 
-    thawRef = rtraverse (\(V.Compose (V.Dict x)) -> V.Compose . RefFor <$> thawRef @m x)
-            . reifyConstraint @(Mutable m)
-    freezeRef vs = rtraverse V.getCompose
-                  $ rzipWith (\(V.Compose (RefFor v)) (V.Compose (V.Dict _)) -> V.Compose $ freezeRef @m v)
-                      vs
-                      (reifyConstraint @(Mutable m) fakeXs)
-      where
-        fakeXs :: Rec f as
-        fakeXs = rmap (\_ -> error "fake Xs") vs
-    copyRef vs = sequenceA_
-               . recordToList
-               . rzipWith (\(V.Compose (RefFor v)) (V.Compose (V.Dict x)) -> V.Const (copyRef @m v x)) vs
-               . reifyConstraint @(Mutable m)
+instance Monad m => Mutable m (Rec f '[]) where
+    type Ref m (Rec f '[]) = Rec (RecRef m f) '[]
+    thawRef   _ = pure RNil
+    freezeRef _ = pure RNil
+    copyRef _ _ = pure ()
+
+instance (Monad m, Mutable m (f a), Mutable m (Rec f as), Ref m (Rec f as) ~ Rec (RecRef m f) as) => Mutable m (Rec f (a ': as)) where
+    type Ref m (Rec f (a ': as)) = Rec (RecRef m f) (a ': as)
+    thawRef   = \case
+      x :& xs -> (:&) <$> (RecRef <$> thawRef x) <*> thawRef xs
+    freezeRef = \case
+      RecRef v :& vs -> (:&) <$> freezeRef v <*> freezeRef vs
+    copyRef = \case
+      RecRef v :& vs -> \case
+        x :& xs -> copyRef v x >> copyRef vs xs
 
 newtype ReMutable (s :: Type) m a = ReMutable a
 newtype ReMutableTrans m n = RMT { runRMT :: forall x. m x -> n x }

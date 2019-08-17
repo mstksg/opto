@@ -362,22 +362,17 @@ instance (Floating c, Ord c, Metric c (f a), Metric c (Rec f (b ': bs))) => Metr
     quadrance (x :& xs) = quadrance x + quadrance xs
 
 instance LinearInPlace m c (f a) => LinearInPlace m c (Rec f '[a]) where
-    (V.Compose (RefFor v) :& RNil) .+.= (x :& RNil)    = v .+.= x
-    (V.Compose (RefFor v) :& RNil) .*=  c              = v .*=  c
-    (V.Compose (RefFor v) :& RNil) .*+= (c, x :& RNil) = v .*+= (c, x)
+    (RecRef v :& RNil) .+.= (x :& RNil)    = v .+.= x
+    (RecRef v :& RNil) .*=  c              = v .*=  c
+    (RecRef v :& RNil) .*+= (c, x :& RNil) = v .*+= (c, x)
 
 instance ( LinearInPlace m c (f a)
          , LinearInPlace m c (Rec f (b ': bs))
-         , Mutable m (f b)
-         , ReifyConstraint (Mutable m) f bs
-         , RMap bs
-         , RApply bs
-         , RecordToList bs
          )
         => LinearInPlace m c (Rec f (a ': b ': bs)) where
-    (V.Compose (RefFor v) :& vs) .+.= (x :& xs)    = do v .+.= x; vs .+.= xs
-    (V.Compose (RefFor v) :& vs) .*=  c            = do v .*=  c; vs .*=  c
-    (V.Compose (RefFor v) :& vs) .*+= (c, x :& xs) = do v .*+= (c, x); vs .*+= (c, xs)
+    (RecRef v :& vs) .+.= (x :& xs)    = do v .+.= x; vs .+.= xs
+    (RecRef v :& vs) .*=  c            = do v .*=  c; vs .*=  c
+    (RecRef v :& vs) .*+= (c, x :& xs) = do v .*+= (c, x); vs .*+= (c, xs)
 
 -- | If @a@ and @b@ are both 'Linear' instances, then if @a@ is equal to
 -- @b@, their scalars @c@ and @d@ must also be equal.  This is necessary
