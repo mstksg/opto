@@ -40,7 +40,6 @@ module Numeric.Opto.Ref (
   ) where
 
 import           Control.Monad.Primitive
-import           Control.Monad.ST
 import           Data.Coerce
 import           Data.Complex
 import           Data.Constraint
@@ -54,7 +53,6 @@ import           Data.Reflection
 import           Data.Vinyl                    as V
 import           Foreign.Storable
 import           GHC.Generics
-import           GHC.TypeNats
 import qualified Data.Vector                   as V
 import qualified Data.Vector.Generic           as VG
 import qualified Data.Vector.Generic.Sized     as SVG
@@ -163,7 +161,6 @@ instance PrimMonad m => Mutable m (H.L n k) where
 
 instance (PrimMonad m, HU.Element a) => Mutable m (HU.Matrix a) where
     type Ref m (HU.Matrix a) = HU.STMatrix (PrimState m) a
-
     thawRef x   = stToPrim $ HU.thawMatrix x
     freezeRef v = stToPrim $ HU.freezeMatrix v
     copyRef v x = stToPrim $ HU.setMatrix v 0 0 x
@@ -269,7 +266,7 @@ instance (Monad m, ReifyConstraint (Mutable m) f as, RMap as, RApply as, RecordT
                       (reifyConstraint @(Mutable m) fakeXs)
       where
         fakeXs :: Rec f as
-        fakeXs = rmap (error "fake Xs") vs
+        fakeXs = rmap (\_ -> error "fake Xs") vs
     copyRef vs = sequenceA_
                . recordToList
                . rzipWith (\(V.Compose (RefFor v)) (V.Compose (V.Dict x)) -> V.Const (copyRef @m v x)) vs

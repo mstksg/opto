@@ -3,63 +3,7 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages:
-- completed:
-    hackage: backprop-0.2.6.2@sha256:84730149e6d6ce43ed4d08b13c91aeb1b0b79de120ecbf474e9f7ca67c7b03b3,2805
-    pantry-tree:
-      size: 2123
-      sha256: cc1c8d9ecdeb504add1d8bdec67aa4fa97e030380fccac053e2fd26c23acd74d
-  original:
-    hackage: backprop-0.2.6.2
-- completed:
-    hackage: hmatrix-backprop-0.1.2.5@sha256:14dd2d263d97e874e38f9a5603e2c1436b6dcbd06910275f3681e7f7e49e037d,2267
-    pantry-tree:
-      size: 455
-      sha256: ff37437e412156643f45a92df33b6de12345a2a5d5ac886cee17341fd6d0faf3
-  original:
-    hackage: hmatrix-backprop-0.1.2.5
-- completed:
-    hackage: one-liner-instances-0.1.2.1@sha256:2b099cc971eb60b7dad0b67d34828833ed5ee4f7279f77df5976fc6f3333cdc0,1409
-    pantry-tree:
-      size: 601
-      sha256: 6358f4117bf966a76d8407ce37ccde0c0d1b64d62fa99b508895dcc73f8a8f2a
-  original:
-    hackage: one-liner-instances-0.1.2.1
-- completed:
-    hackage: hmatrix-vector-sized-0.1.1.3@sha256:ef597ba969db6c7239e125f2e27257a6d0e49b5868b542fe661340aa9c41c3b8,1881
-    pantry-tree:
-      size: 400
-      sha256: 7e6c16062930e6a164c7edc975226ac3caad4898c76b021ae8f05ba9f107cc5e
-  original:
-    hackage: hmatrix-vector-sized-0.1.1.3
-- completed:
-    hackage: indexed-list-literals-0.2.1.2@sha256:0760e2a86605b5557af7180d4d50e317d75a5a92ca12aaabb6948ce97b7a94ac,2373
-    pantry-tree:
-      size: 341
-      sha256: 4e54f8d033a1f46333274ea3d1b9785c9e4fd225dcddc988c7a41353d9959cd5
-  original:
-    hackage: indexed-list-literals-0.2.1.2
-- completed:
-    hackage: vinyl-0.11.0@sha256:ba415a21faa638d4fa1df04513c789764458b923f4deacf6defd632a030a0639,3804
-    pantry-tree:
-      size: 1857
-      sha256: 97f42f96852ab5278f9d57f0a1121298fae557fe8c107e11dbf55d3ac6697fc4
-  original:
-    hackage: vinyl-0.11.0
-- completed:
-    hackage: vector-0.12.0.3@sha256:1422b0bcf4e7675116ca8d9f473bf239850c58c4518a56010e3bfebeac345ace,7171
-    pantry-tree:
-      size: 3429
-      sha256: 1adb067bf4b6abf2269a369e18016e5a0e6c40b876aa64dfea9f47547d915ef6
-  original:
-    hackage: vector-0.12.0.3
-- completed:
-    hackage: vector-sized-1.2.0.1@sha256:569160e163b6d85cd80ed3ae2f20a541ced210a721d12cb7eedcad395aefbb92,1670
-    pantry-tree:
-      size: 1138
-      sha256: dab631ff9542ee31cfe77434e2bb4808238e554438706264063d4b7a558943fa
-  original:
-    hackage: vector-sized-1.2.0.1
+packages: []
 snapshots:
 - completed:
     size: 515171
