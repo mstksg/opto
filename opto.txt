@@ -91,10 +91,10 @@ instance Numeric.Opto.Ref.Mutable m c => Numeric.Opto.Ref.GMutable m (GHC.Generi
 instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:*: g)
 instance Numeric.Opto.Ref.GMutable m f => Numeric.Opto.Ref.GMutable m (GHC.Generics.M1 i c f)
 instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g, Control.Monad.Primitive.PrimMonad m) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:+: g)
-instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.L n k)
-instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.M n k)
-instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Internal.Static.R n)
-instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Internal.Static.C n)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.L n k)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.M n k)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n) => Numeric.Opto.Ref.Mutable m (Internal.Static.R n)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat n) => Numeric.Opto.Ref.Mutable m (Internal.Static.C n)
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Numeric.Opto.Ref.MutRef a)
 instance Data.Vinyl.XRec.IsoHKD Numeric.Opto.Ref.MutRef a
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Types.Int
