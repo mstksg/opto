@@ -1,25 +1,26 @@
-{-# LANGUAGE AllowAmbiguousTypes           #-}
-{-# LANGUAGE DataKinds                     #-}
-{-# LANGUAGE DefaultSignatures             #-}
-{-# LANGUAGE DeriveDataTypeable            #-}
-{-# LANGUAGE DeriveFoldable                #-}
-{-# LANGUAGE DeriveFunctor                 #-}
-{-# LANGUAGE DeriveGeneric                 #-}
-{-# LANGUAGE DeriveTraversable             #-}
-{-# LANGUAGE DerivingVia                   #-}
-{-# LANGUAGE FlexibleContexts              #-}
-{-# LANGUAGE FlexibleInstances             #-}
-{-# LANGUAGE FunctionalDependencies        #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving    #-}
-{-# LANGUAGE MultiParamTypeClasses         #-}
-{-# LANGUAGE RankNTypes                    #-}
-{-# LANGUAGE ScopedTypeVariables           #-}
-{-# LANGUAGE StandaloneDeriving            #-}
-{-# LANGUAGE TypeApplications              #-}
-{-# LANGUAGE TypeFamilies                  #-}
-{-# LANGUAGE TypeOperators                 #-}
-{-# LANGUAGE UndecidableInstances          #-}
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
+{-# LANGUAGE AllowAmbiguousTypes                      #-}
+{-# LANGUAGE DataKinds                                #-}
+{-# LANGUAGE DefaultSignatures                        #-}
+{-# LANGUAGE DeriveDataTypeable                       #-}
+{-# LANGUAGE DeriveFoldable                           #-}
+{-# LANGUAGE DeriveFunctor                            #-}
+{-# LANGUAGE DeriveGeneric                            #-}
+{-# LANGUAGE DeriveTraversable                        #-}
+{-# LANGUAGE DerivingVia                              #-}
+{-# LANGUAGE FlexibleContexts                         #-}
+{-# LANGUAGE FlexibleInstances                        #-}
+{-# LANGUAGE FunctionalDependencies                   #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving               #-}
+{-# LANGUAGE MultiParamTypeClasses                    #-}
+{-# LANGUAGE RankNTypes                               #-}
+{-# LANGUAGE ScopedTypeVariables                      #-}
+{-# LANGUAGE StandaloneDeriving                       #-}
+{-# LANGUAGE TypeApplications                         #-}
+{-# LANGUAGE TypeFamilies                             #-}
+{-# LANGUAGE TypeOperators                            #-}
+{-# LANGUAGE UndecidableInstances                     #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints            #-}
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 
 -- |
 -- Module      : Numeric.Opto.Update
@@ -49,18 +50,18 @@ import           Data.Foldable
 import           Data.Function
 import           Data.Maybe
 import           Data.Semigroup
-import           Data.Vinyl hiding                 ((:~:))
-import           GHC.Generics                      (Generic)
+import           Data.Vinyl hiding                   ((:~:))
+import           GHC.Generics                        (Generic)
 import           GHC.TypeLits
 import           Generics.OneLiner
 import           Numeric.Opto.Ref
 import           Unsafe.Coerce
-import qualified Data.Vector.Generic               as VG
-import qualified Data.Vector.Generic.Mutable.Sized as SVGM
-import qualified Data.Vector.Generic.Sized         as SVG
-import qualified Data.Vinyl.Functor                as V
-import qualified Numeric.LinearAlgebra             as UH
-import qualified Numeric.LinearAlgebra.Static      as H
+import qualified Data.Vector.Generic                 as VG
+import qualified Data.Vector.Generic.Mutable.Sized   as SVGM
+import qualified Data.Vector.Generic.Sized           as SVG
+import qualified Numeric.LinearAlgebra               as UH
+import qualified Numeric.LinearAlgebra.Static        as H
+import qualified Numeric.LinearAlgebra.Static.Vector as H
 
 -- | If @a@ is an instance of @'Linear' c@, you can /add/ together values
 -- of @a@, and /scale/ them using @c@s.
@@ -137,7 +138,7 @@ class Linear c a => Metric c a where
     infixl 7 <.>
     -- | Sum of component-wise product
     (<.>)    :: a -> a -> c
-    -- | Maximum absolute component
+    -- | Maximum absolute component.  Is undefined if no components exist.
     norm_inf :: a -> c
     -- | Number of non-zero components
     norm_0   :: a -> c
@@ -305,7 +306,10 @@ instance KnownNat n => Metric Double (H.R n) where
     norm_1    = H.norm_1
     norm_2    = H.norm_2
     quadrance = (**2) . H.norm_2
-instance (PrimMonad m, KnownNat n) => LinearInPlace m Double (H.R n)
+instance (PrimMonad m, KnownNat n) => LinearInPlace m Double (H.R n) where
+    MR v .+.= x = v .+.= H.rVec x
+    MR v  .*= c = v  .*= c
+    MR v .*+= (c, x) = v .*+= (c, H.rVec x)
 
 instance (KnownNat n, KnownNat m) => Linear Double (H.L n m) where
     (.+.)   = (+)
@@ -314,11 +318,14 @@ instance (KnownNat n, KnownNat m) => Linear Double (H.L n m) where
 instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
     (<.>)     = (UH.<.>) `on` UH.flatten . H.extract
     norm_inf  = UH.maxElement . H.extract . abs
-    norm_0    = fromIntegral . uncurry (*) . H.size
+    norm_0    = sum . map norm_0 . H.toRows
     norm_1    = UH.sumElements . H.extract
     norm_2    = UH.norm_2 . UH.flatten . H.extract
     quadrance = (**2) . norm_2
-instance (PrimMonad m, KnownNat n, KnownNat k) => LinearInPlace m Double (H.L n k)
+instance (PrimMonad m, KnownNat n, KnownNat k) => LinearInPlace m Double (H.L n k) where
+    ML v .+.= x = v .+.= H.lVec x
+    ML v  .*= c = v  .*= c
+    ML v .*+= (c, x) = v .*+= (c, H.lVec x)
 
 instance (Linear c a, Linear c b) => Linear c (a, b) where
 instance (Linear c a, Linear c b, Linear c d) => Linear c (a, b, d) where

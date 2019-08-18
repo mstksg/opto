@@ -10,6 +10,7 @@
 {-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE NoStarIsType           #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TupleSections          #-}
@@ -33,8 +34,10 @@ module Numeric.Opto.Ref (
     Mutable(..)
   , MutRef(..)
   , RefFor(..)
+  -- * Instances
   , GMutable, GRef(..), gThawRef, gFreezeRef, gCopyRef
   , RecRef(..)
+  , MR(..), ML(..)
   -- * ReMutable
   , reMutable, reMutableConstraint
   , ReMutable(..), ReMutableTrans(..)
@@ -50,23 +53,25 @@ import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.Ratio
 import           Data.Reflection
-import           Data.Vinyl                    as V
+import           Data.Vinyl                          as V
 import           Foreign.Storable
 import           GHC.Generics
-import qualified Data.Vector                   as V
-import qualified Data.Vector.Generic           as VG
-import qualified Data.Vector.Generic.Sized     as SVG
-import qualified Data.Vector.Mutable           as MV
-import qualified Data.Vector.Primitive         as VP
-import qualified Data.Vector.Primitive.Mutable as MVP
-import qualified Data.Vector.Storable          as VS
-import qualified Data.Vector.Storable.Mutable  as MVS
-import qualified Data.Vector.Unboxed           as VU
-import qualified Data.Vector.Unboxed.Mutable   as MVU
-import qualified Data.Vinyl.XRec               as X
-import qualified Numeric.LinearAlgebra         as HU
-import qualified Numeric.LinearAlgebra.Devel   as HU
-import qualified Numeric.LinearAlgebra.Static  as H
+import           GHC.TypeNats
+import qualified Data.Vector                         as V
+import qualified Data.Vector.Generic                 as VG
+import qualified Data.Vector.Generic.Sized           as SVG
+import qualified Data.Vector.Mutable                 as MV
+import qualified Data.Vector.Primitive               as VP
+import qualified Data.Vector.Primitive.Mutable       as MVP
+import qualified Data.Vector.Storable                as VS
+import qualified Data.Vector.Storable.Mutable        as MVS
+import qualified Data.Vector.Unboxed                 as VU
+import qualified Data.Vector.Unboxed.Mutable         as MVU
+import qualified Data.Vinyl.XRec                     as X
+import qualified Numeric.LinearAlgebra               as HU
+import qualified Numeric.LinearAlgebra.Devel         as HU
+import qualified Numeric.LinearAlgebra.Static        as H
+import qualified Numeric.LinearAlgebra.Static.Vector as H
 
 class Monad m => Mutable m a where
     type Ref m a = (v :: Type) | v -> a
@@ -155,15 +160,6 @@ instance (PrimMonad m, VG.Vector v a) => Mutable m (SVG.Vector v n a) where
     freezeRef = SVG.freeze
     copyRef   = SVG.copy
 
-instance PrimMonad m => Mutable m (H.R n) where
-instance PrimMonad m => Mutable m (H.L n k) where
-
-instance (PrimMonad m, HU.Element a) => Mutable m (HU.Matrix a) where
-    type Ref m (HU.Matrix a) = HU.STMatrix (PrimState m) a
-    thawRef x   = stToPrim $ HU.thawMatrix x
-    freezeRef v = stToPrim $ HU.freezeMatrix v
-    copyRef v x = stToPrim $ HU.setMatrix v 0 0 x
-
 instance Monad m => Mutable m () where
     type Ref m () = ()
     thawRef   _ = pure ()
@@ -187,6 +183,49 @@ instance (Monad m, Mutable m a, Mutable m b, Mutable m c, Mutable m d) => Mutabl
     thawRef   (!x, !y, !z, !a) = (,,,) <$> thawRef x   <*> thawRef y   <*> thawRef z   <*> thawRef a
     freezeRef (u , v , w , j ) = (,,,) <$> freezeRef u <*> freezeRef v <*> freezeRef w <*> freezeRef j
     copyRef   (u , v , w , j ) (!x, !y, !z, !a) = copyRef u x *> copyRef v y *> copyRef w z *> copyRef j a
+
+
+instance (PrimMonad m, HU.Element a) => Mutable m (HU.Matrix a) where
+    type Ref m (HU.Matrix a) = HU.STMatrix (PrimState m) a
+    thawRef x   = stToPrim $ HU.thawMatrix x
+    freezeRef v = stToPrim $ HU.freezeMatrix v
+    copyRef v x = stToPrim $ HU.setMatrix v 0 0 x
+
+-- | Mutable ref for hmatrix's statically sized vector types, 'H.R' and
+-- 'H.C'.
+newtype MR s n a = MR { getMR :: SVG.MVector VS.MVector n s a }
+
+instance PrimMonad m => Mutable m (H.R n) where
+    type Ref m (H.R n) = MR (PrimState m) n Double
+
+    thawRef = fmap MR . thawRef . H.rVec
+    freezeRef = fmap H.vecR . freezeRef . getMR
+    copyRef (MR v) x = copyRef v (H.rVec x)
+
+instance PrimMonad m => Mutable m (H.C n) where
+    type Ref m (H.C n) = MR (PrimState m) n (Complex Double)
+
+    thawRef = fmap MR . thawRef . H.cVec
+    freezeRef = fmap H.vecC . freezeRef . getMR
+    copyRef (MR v) x = copyRef v (H.cVec x)
+
+-- | Mutable ref for hmatrix's statically sized matrix types, 'H.L' and
+-- 'H.M'.
+newtype ML s n k a = ML { getML :: SVG.MVector VS.MVector (n * k) s a }
+
+instance (PrimMonad m, KnownNat k) => Mutable m (H.L n k) where
+    type Ref m (H.L n k) = ML (PrimState m) n k Double
+
+    thawRef = fmap ML . thawRef . H.lVec
+    freezeRef = fmap H.vecL . freezeRef . getML
+    copyRef (ML v) x = copyRef v (H.lVec x)
+
+instance (PrimMonad m, KnownNat k) => Mutable m (H.M n k) where
+    type Ref m (H.M n k) = ML (PrimState m) n k (Complex Double)
+
+    thawRef = fmap ML . thawRef . H.mVec
+    freezeRef = fmap H.vecM . freezeRef . getML
+    copyRef (ML v) x = copyRef v (H.mVec x)
 
 class Monad m => GMutable m f where
     type GRef_ m f = (u :: Type -> Type) | u -> f

@@ -44,6 +44,8 @@ library:
   - conduit >= 1.3.0
   - constraints
   - finite-typelits
+  - ghc-typelits-knownnat
+  - hmatrix-vector-sized
   - invariant
   - mono-traversable
   - mtl
