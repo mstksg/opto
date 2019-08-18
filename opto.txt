@@ -58,6 +58,18 @@ newtype RecRef m f a
 RecRef :: Ref m (f a) -> RecRef m f a
 [recRef] :: RecRef m f a -> Ref m (f a)
 
+-- | Mutable ref for hmatrix's statically sized vector types, <a>R</a> and
+--   <a>C</a>.
+newtype MR s n a
+MR :: MVector MVector n s a -> MR s n a
+[getMR] :: MR s n a -> MVector MVector n s a
+
+-- | Mutable ref for hmatrix's statically sized matrix types, <a>L</a> and
+--   <a>M</a>.
+newtype ML s n k a
+ML :: MVector MVector (n * k) s a -> ML s n k a
+[getML] :: ML s n k a -> MVector MVector (n * k) s a
+
 -- | If you can provice a natural transformation from <tt>m</tt> to
 --   <tt>n</tt>, you should be able to use a value as if it had
 --   <tt><a>Mutable</a> n a</tt> if you have <tt><a>Mutable</a> m a</tt>.
@@ -79,6 +91,10 @@ instance Numeric.Opto.Ref.Mutable m c => Numeric.Opto.Ref.GMutable m (GHC.Generi
 instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:*: g)
 instance Numeric.Opto.Ref.GMutable m f => Numeric.Opto.Ref.GMutable m (GHC.Generics.M1 i c f)
 instance (Numeric.Opto.Ref.GMutable m f, Numeric.Opto.Ref.GMutable m g, Control.Monad.Primitive.PrimMonad m) => Numeric.Opto.Ref.GMutable m (f GHC.Generics.:+: g)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.L n k)
+instance (Control.Monad.Primitive.PrimMonad m, GHC.TypeNats.KnownNat k) => Numeric.Opto.Ref.Mutable m (Internal.Static.M n k)
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Internal.Static.R n)
+instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Internal.Static.C n)
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Numeric.Opto.Ref.MutRef a)
 instance Data.Vinyl.XRec.IsoHKD Numeric.Opto.Ref.MutRef a
 instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m GHC.Types.Int
@@ -92,13 +108,11 @@ instance (Control.Monad.Primitive.PrimMonad m, Foreign.Storable.Storable a) => N
 instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Unboxed.Base.Unbox a) => Numeric.Opto.Ref.Mutable m (Data.Vector.Unboxed.Base.Vector a)
 instance (Control.Monad.Primitive.PrimMonad m, Data.Primitive.Types.Prim a) => Numeric.Opto.Ref.Mutable m (Data.Vector.Primitive.Vector a)
 instance (Control.Monad.Primitive.PrimMonad m, Data.Vector.Generic.Base.Vector v a) => Numeric.Opto.Ref.Mutable m (Data.Vector.Generic.Sized.Internal.Vector v n a)
-instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Internal.Static.R n)
-instance Control.Monad.Primitive.PrimMonad m => Numeric.Opto.Ref.Mutable m (Internal.Static.L n k)
-instance (Control.Monad.Primitive.PrimMonad m, Internal.Matrix.Element a) => Numeric.Opto.Ref.Mutable m (Internal.Matrix.Matrix a)
 instance GHC.Base.Monad m => Numeric.Opto.Ref.Mutable m ()
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m a, Numeric.Opto.Ref.Mutable m b) => Numeric.Opto.Ref.Mutable m (a, b)
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m a, Numeric.Opto.Ref.Mutable m b, Numeric.Opto.Ref.Mutable m c) => Numeric.Opto.Ref.Mutable m (a, b, c)
 instance (GHC.Base.Monad m, Numeric.Opto.Ref.Mutable m a, Numeric.Opto.Ref.Mutable m b, Numeric.Opto.Ref.Mutable m c, Numeric.Opto.Ref.Mutable m d) => Numeric.Opto.Ref.Mutable m (a, b, c, d)
+instance (Control.Monad.Primitive.PrimMonad m, Internal.Matrix.Element a) => Numeric.Opto.Ref.Mutable m (Internal.Matrix.Matrix a)
 
 
 -- | Conduits that are useful for sampling and running optimizers.
@@ -234,7 +248,7 @@ class Linear c a => Metric c a
 -- | Sum of component-wise product
 (<.>) :: Metric c a => a -> a -> c
 
--- | Maximum absolute component
+-- | Maximum absolute component. Is undefined if no components exist.
 norm_inf :: Metric c a => a -> c
 
 -- | Number of non-zero components
@@ -252,7 +266,7 @@ quadrance :: Metric c a => a -> c
 -- | Sum of component-wise product
 (<.>) :: (Metric c a, ADT a, Constraints a (Metric c)) => a -> a -> c
 
--- | Maximum absolute component
+-- | Maximum absolute component. Is undefined if no components exist.
 norm_inf :: (Metric c a, ADT a, Constraints a (Metric c), Ord c) => a -> c
 
 -- | Number of non-zero components
