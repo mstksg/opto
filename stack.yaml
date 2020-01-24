@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: nightly-2019-07-02
+resolver: nightly-2020-01-21
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -43,6 +43,9 @@ packages:
 extra-deps:
 - hmatrix-vector-sized-0.1.2.0
 - hmatrix-backprop-0.1.3.0
+- mutable-0.1.0.0
+- vinyl-0.12.0
+- backprop-0.2.6.3
 
 
 ghc-options:

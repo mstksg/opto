@@ -27,6 +27,7 @@ dependencies:
 - deepseq
 - hmatrix
 - mwc-random
+- mutable
 - primitive
 - reflection
 - transformers

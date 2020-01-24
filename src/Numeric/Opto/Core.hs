@@ -27,9 +27,11 @@
 --
 -- Core functionality for optimizers.
 module Numeric.Opto.Core (
+  -- * Optimizer type
     Diff, Grad, Opto(..)
   , mapSample, mapOpto
   , fromCopying, fromStateless
+  -- * Making Grads
   , pureGrad
   , nonSampling, pureNonSampling
   ) where
