@@ -60,10 +60,10 @@ import           Data.List
 import           Data.List.NonEmpty              (NonEmpty(..))
 import           Data.Maybe
 import           Data.MonoTraversable
+import           Data.Mutable
 import           Data.Semigroup.Foldable
 import           GHC.Natural
 import           Numeric.Opto.Core
-import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 import           UnliftIO
 import           UnliftIO.Concurrent

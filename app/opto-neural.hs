@@ -22,6 +22,7 @@ import           Control.Monad.Trans.Maybe
 import           Data.Bitraversable
 import           Data.Default
 import           Data.IDX
+import           Data.Mutable
 import           Data.Traversable
 import           Data.Tuple
 import           GHC.Generics                                 (Generic)

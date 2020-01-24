@@ -37,8 +37,9 @@ module Numeric.Opto.Core (
   ) where
 
 import           Data.Kind
+import           Data.Mutable
+import           Data.Mutable.Class
 import           Data.Type.Equality
-import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
 -- | Useful type synonym to indicate /differences/ in @a@ and rates of

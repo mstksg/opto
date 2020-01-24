@@ -49,20 +49,12 @@ module Numeric.Opto (
   , Metric(..), gDot, gNorm_inf, gNorm_0, gNorm_1, gNorm_2, gQuadrance
   , LinearInPlace(..), sumLinearInPlace
   -- ** Mutation
-  , Mutable(..)
-  , MutRef(..)
-  , RefFor(..)
-  -- *** Instances
-  , GMutable, GRef(..), gThawRef, gFreezeRef, gCopyRef
-  , RecRef(..)
   , MR(..), ML(..)
   ) where
 
-    -- module Opto
 
-import           Numeric.Opto.Core        as Opto
-import           Numeric.Opto.Optimizer   as Opto
-import           Numeric.Opto.Ref         as Opto
-import           Numeric.Opto.Run         as Opto
-import           Numeric.Opto.Run.Conduit as Opto
-import           Numeric.Opto.Update      as Opto
+import           Numeric.Opto.Core           as Opto
+import           Numeric.Opto.Optimizer      as Opto
+import           Numeric.Opto.Ref            as Opto
+import           Numeric.Opto.Run            as Opto
+import           Numeric.Opto.Update         as Opto

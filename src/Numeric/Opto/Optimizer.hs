@@ -30,8 +30,8 @@ module Numeric.Opto.Optimizer (
   ) where
 
 import           Data.Default
+import           Data.Mutable
 import           Numeric.Opto.Core
-import           Numeric.Opto.Ref
 import           Numeric.Opto.Update
 
 -- | Steepest descent, acording to some learning rate.  The simplest
