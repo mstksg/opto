@@ -162,7 +162,6 @@ opto
     -> Opto m r a     -- ^ Optimizer
     -> m a
 opto ro sampler x0 o = opto_ ro sampler x0 o const
-{-# INLINE opto #-}
 
 -- | Run a non-sampling optimizer on some input until the stop condition is
 -- met.
@@ -173,7 +172,6 @@ optoNonSampling
     -> Opto m () a    -- ^ Non-sampling optimizer
     -> m a
 optoNonSampling ro = opto ro (pure (Just ()))
-{-# INLINE optoNonSampling #-}
 
 -- | A version of 'opto' that also returns an updated optimizer state that
 -- can be resumed.
@@ -185,7 +183,6 @@ opto'
     -> Opto m r a     -- ^ Optimizer
     -> m (a, Opto m r a)
 opto' ro sampler x0 o = opto_ ro sampler x0 o (liftA2 (,))
-{-# INLINE opto' #-}
 
 -- | A version of 'optoNonSampling' that also returns an updated optimizer state that
 -- can be resumed.
@@ -196,7 +193,6 @@ optoNonSampling'
     -> Opto m () a    -- ^ Non-sampling optimizer
     -> m (a, Opto m () a)
 optoNonSampling' ro = opto' ro (pure (Just ()))
-{-# INLINE optoNonSampling' #-}
 
 opto_
     :: forall m r a q. Monad m
@@ -223,7 +219,6 @@ opto_ RO{..} sampler x0 MkOpto{..} f = do
       , olReportAct   = roReport
       }
     f (freezeRef rX) (flip MkOpto oUpdate <$> freezeRef rS)
-{-# INLINE opto_ #-}
 
 data OptoLoop m r a c = OL
     { olLimit       :: Maybe Int
@@ -271,7 +266,6 @@ optoLoop OL{..} = go 0
       k <- fmap isNothing . runMaybeT . replicateM olBatch $
           lift . olUpdate v =<< batchSingle x
       (k,) . Just . (1 :: c,) <$> olRead v
-{-# INLINE optoLoop #-}
 
 -- | Given an optimizer and some initial value, produce a 'ConduitT' that
 -- takes in samples and outputs each successively optimized versions of the
@@ -297,7 +291,6 @@ optoConduit
     -> Opto (ConduitT r a m) r a  -- ^ Optimizer
     -> ConduitT r a m ()
 optoConduit ro x0 = void . optoConduit' ro x0
-{-# INLINE optoConduit #-}
 
 -- | A version of 'optoConduit' that also returns an updated optimizer state that
 -- can be resumed.
@@ -311,7 +304,6 @@ optoConduit' ro x0 o = opto_ ro' C.await x0 o (const id)
   where
     ro' = (hoistRunOpts lift ro)
         { roStopCond = \d x -> C.yield x *> lift (roStopCond ro d x) }
-{-# INLINE optoConduit' #-}
 
 -- | Convenient wrapper over 'opto' to allow consumption over a list of
 -- samples.
@@ -323,7 +315,6 @@ optoFold
     -> [r]                          -- ^ List of samples to optimize over
     -> m (a, [r])
 optoFold ro x0 o = runStateT (opto (hoistRunOpts lift ro) sampleState x0 o)
-{-# INLINE optoFold #-}
 
 -- | A version of 'optoFold'' that also returns an updated optimizer state that
 -- can be resumed.
@@ -338,12 +329,9 @@ optoFold' ro x0 o = fmap shuffle
                   . runStateT (opto' (hoistRunOpts lift ro) sampleState x0 o)
   where
     shuffle ((x', o'), rs) = (x', rs, o')
-    {-# INLINE shuffle #-}
-{-# INLINE optoFold' #-}
 
 sampleState :: Monad m => StateT [r] m (Maybe r)
 sampleState = state $ maybe (Nothing, []) (first Just) . uncons
-{-# INLINE sampleState #-}
 
 -- | Run an optimizer in parallel on multiple threads on some value, given
 -- a (thread-safe) monadic action to produce each new sample.
@@ -386,7 +374,6 @@ optoPar ro po sampler x0 o = optoPar_ ro po x0 $ \hitStop lim x -> do
               }
         opto ro' sampler x o
       else pure Nothing
-{-# INLINE optoPar #-}
 
 -- | Run a non-sampling optimizer in parallel on multiple threads on some
 -- value until the stop condition is met.
@@ -401,7 +388,6 @@ optoParNonSampling
     -> Opto m () a        -- ^ Non-sampling optimizer
     -> m a
 optoParNonSampling ro po = optoPar ro po (pure (Just ()))
-{-# INLINE optoParNonSampling #-}
 
 -- | A version of 'optoPar' that performs a batch fetch for each thread's
 -- entire sample pool /before/ beginning parallel optimization.  This can
@@ -432,7 +418,6 @@ optoParChunk ro po sampler x0 o = optoPar_ ro po x0 $ \hitStop lim x -> do
               , roFreq     = Nothing
               }
         optoFold ro' x o items
-{-# INLINE optoParChunk #-}
 
 optoPar_
     :: forall m a. MonadUnliftIO m
@@ -456,7 +441,6 @@ optoPar_ RO{..} PO{..} x0 runner = do
       , oplCombine = poCombine
       , oplInitial = x0
       }
-{-# INLINE optoPar_ #-}
 
 data OptoParLoop m a = OPL
     { oplThreads :: Int
@@ -495,7 +479,6 @@ optoParLoop OPL{..} = go 0 oplInitial
     getGas = flip modifyMVar $ \n -> case n `minusNaturalMaybe` fromIntegral oplSplit of
       Nothing -> pure (0, fromIntegral n)
       Just g  -> pure (g, oplSplit      )
-{-# INLINE optoParLoop #-}
 
 -- | Given an optimizer, some initial value, and a conduit /source/,
 -- returns a conduit sorce that outputs succesively optimized versions of
@@ -528,7 +511,6 @@ optoConduitPar ro po x0 o = optoConduitPar_ ro po $ \sem inQueue outVar -> do
           sem
           atomically $ readTBMQueue inQueue
     optoPar ro' po readQueue x0 o
-{-# INLINE optoConduitPar #-}
 
 -- | A version of 'optoConduitPar' that performs a batch fetch from the
 -- input source for each thread's entire sample pool /before/ beginning
@@ -552,7 +534,6 @@ optoConduitParChunk ro po x0 o = optoConduitPar_ ro po $ \sem inQueue outVar -> 
           sem
           atomically $ readTBMQueue inQueue
     optoParChunk ro' po readChunk x0 o
-{-# INLINE optoConduitParChunk #-}
 
 optoConduitPar_
     :: forall m r a. MonadUnliftIO m
@@ -581,7 +562,6 @@ optoConduitPar_ ro po runner src = do
           C.yield r
           unless done loop
     loop
-{-# INLINE optoConduitPar_ #-}
 
 
 -- | The mean of the values in a non-empty container.
@@ -589,17 +569,12 @@ mean :: (Foldable1 t, Fractional a) => t a -> a
 mean = go . foldMap1 (`Sum2` 1)
   where
     go (Sum2 x n) = x / fromInteger n
-    {-# INLINE go #-}
-{-# INLINE mean #-}
 
 data Sum2 a b = Sum2 !a !b
 
 instance (Num a, Num b) => Semigroup (Sum2 a b) where
     Sum2 x1 y1 <> Sum2 x2 y2 = Sum2 (x1 + x2) (y1 + y2)
-    {-# INLINE (<>) #-}
 
 instance (Num a, Num b) => Monoid (Sum2 a b) where
     mappend = (<>)
-    {-# INLINE mappend #-}
     mempty = Sum2 0 0
-    {-# INLINE mempty #-}
