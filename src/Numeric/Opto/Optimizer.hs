@@ -3,6 +3,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -38,10 +39,10 @@ import           Numeric.Opto.Update
 -- | Steepest descent, acording to some learning rate.  The simplest
 -- optimizer.
 steepestDescent
-    :: (LinearInPlace q c a, PrimState m ~ q, Monad m)
+    :: LinearInPlace q c a
     => c                          -- ^ learning rate
-    -> Grad m r a                 -- ^ gradient
-    -> Opto m r a
+    -> Grad q r a                 -- ^ gradient
+    -> Opto q r a
 steepestDescent lr gr = fromStateless $ \r x -> do
     !g <- gr r x
     pure (-lr, g)
@@ -57,15 +58,12 @@ instance Fractional c => Default (Momentum c) where
 
 -- | Steepest descent with momentum. (Qian, 1999)
 momentum
-    :: forall m r a c q.
-     ( LinearInPlace q c a
-     , PrimMonad m
-     , PrimState m ~ q
-     )
+    :: forall r a c q.
+     ( LinearInPlace q c a )
     => Momentum c        -- ^ configuration
     -> c                 -- ^ learning rate
-    -> Grad m r a        -- ^ gradient
-    -> Opto m r a
+    -> Grad q r a        -- ^ gradient
+    -> Opto q r a
 momentum Momentum{..} lr gr = MkOpto
     { oInit   = zeroL :: a
     , oUpdate = \rV r x -> do
@@ -87,15 +85,12 @@ instance Fractional c => Default (Nesterov c) where
 
 -- | Nesterov accelerated gradient (NAG) (Nesterov, 1983)
 nesterov
-    :: forall m r a c q.
-     ( LinearInPlace q c a
-     , PrimMonad m
-     , PrimState m ~ q
-     )
+    :: forall r a c q.
+     ( LinearInPlace q c a )
     => Nesterov c       -- ^ configuration
     -> c                -- ^ learning rate
-    -> Grad m r a       -- ^ gradient
-    -> Opto m r a
+    -> Grad q r a       -- ^ gradient
+    -> Opto q r a
 nesterov Nesterov{..} lr gr = MkOpto
     { oInit   = zeroL :: a
     , oUpdate = \rV r x -> do
@@ -123,16 +118,14 @@ instance Fractional c => Default (Adagrad c) where
 -- | Adaptive Gradient (Duchu, Hazan, Singer, 2011).  Note that if the
 -- state is not reset periodically, updates tend to zero fairly quickly.
 adagrad
-    :: forall m r a c q.
+    :: forall r a c q.
      ( LinearInPlace q c a
      , Floating a
      , Real c
-     , PrimMonad m
-     , PrimState m ~ q
      )
     => Adagrad c
-    -> Grad m r a
-    -> Opto m r a
+    -> Grad q r a
+    -> Opto q r a
 adagrad Adagrad{..} gr = MkOpto
     { oInit   = zeroL :: a
     , oUpdate = \rBigG r x -> do
@@ -144,6 +137,7 @@ adagrad Adagrad{..} gr = MkOpto
              )
     }
   where
+    eps :: a
     eps = realToFrac adagradEps
 
 -- | Hyperparameters for 'adadelta'
@@ -162,16 +156,14 @@ instance Fractional c => Default (Adadelta c) where
 -- | The Adadelta extension of Adagrad (Zeiler, 2012) that mitigates the
 -- decreasing learning rate.
 adadelta
-    :: forall m r a c q.
+    :: forall r a c q.
      ( LinearInPlace q c a
      , Floating a
      , Real c
-     , PrimMonad m
-     , PrimState m ~ q
      )
     => Adadelta c
-    -> Grad m r a
-    -> Opto m r a
+    -> Grad q r a
+    -> Opto q r a
 adadelta Adadelta{..} gr = MkOpto
     { oInit   = (zeroL, zeroL) :: (a, a)
     , oUpdate = \(rDeltHist, rGradHist) r x -> do
@@ -189,6 +181,7 @@ adadelta Adadelta{..} gr = MkOpto
         pure ( -1, negaDelt )
     }
   where
+    eps :: a
     eps = realToFrac adadeltaEps
     complDecay = 1 - adadeltaDecay
 
@@ -209,16 +202,14 @@ instance Fractional c => Default (RMSProp c) where
 
 -- | RMSProp, as described by Geoff Hinton.
 rmsProp
-    :: forall m r a c q.
+    :: forall r a c q.
      ( LinearInPlace q c a
      , Floating a
      , Real c
-     , PrimState m ~ q
-     , PrimMonad m
      )
     => RMSProp c
-    -> Grad m r a
-    -> Opto m r a
+    -> Grad q r a
+    -> Opto q r a
 rmsProp RMSProp{..} gr = MkOpto
     { oInit   = zeroL :: a
     , oUpdate = \rGradHist r x -> do
@@ -231,6 +222,7 @@ rmsProp RMSProp{..} gr = MkOpto
              )
     }
   where
+    eps :: a
     eps = realToFrac rmsPropEps
     complDecay = 1 - rmsPropDecay
 
@@ -252,17 +244,15 @@ instance Fractional c => Default (Adam c) where
 
 -- | Adaptive Moment Estimation (Kingma, Ba, 2015)
 adam
-    :: forall m r a c q.
+    :: forall r a c q.
      ( RealFloat c
      , Floating a
      , LinearInPlace q c a
      , Mutable q c
-     , PrimMonad m
-     , PrimState m ~ q
      )
     => Adam c               -- ^ configuration
-    -> Grad m r a           -- ^ gradient
-    -> Opto m r a
+    -> Grad q r a           -- ^ gradient
+    -> Opto q r a
 adam Adam{..} gr = MkOpto
     { oInit   = (1, zeroL, zeroL) :: (c, a, a)
     , oUpdate = \(rT, rM, rV) r x -> do
@@ -299,17 +289,15 @@ instance Fractional c => Default (AdaMax c) where
 
 -- | Adam variation (Kingma and Ba, 2015)
 adaMax
-    :: forall m r a c q.
+    :: forall r a c q.
      ( RealFloat c
      , Metric c a
      , LinearInPlace q c a
      , Mutable q c
-     , PrimMonad m
-     , PrimState m ~ q
      )
     => AdaMax c             -- ^ configuration
-    -> Grad m r a           -- ^ gradient
-    -> Opto m r a
+    -> Grad q r a           -- ^ gradient
+    -> Opto q r a
 adaMax AdaMax{..} gr = MkOpto
     { oInit   = (1, zeroL, 0) :: (c, a, c)
     , oUpdate = \(rT, rM, rU) r x -> do

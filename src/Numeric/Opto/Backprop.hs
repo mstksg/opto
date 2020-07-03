@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes       #-}
+{-# LANGUAGE TypeFamilies     #-}
 
 -- |
 -- Module      : Numeric.Opto.Backprop
@@ -22,14 +23,14 @@ import           Numeric.Opto.Core
 
 -- | Turn a simple @a -> b@ function into a @'Grad' m a@.
 bpGrad
-    :: (Monad m, Backprop a, Backprop b)
+    :: (Backprop a, Backprop b)
     => (forall s. Reifies s W => BVar s a -> BVar s b)
-    -> Grad m r a
+    -> Grad q r a
 bpGrad f = pureNonSampling $ gradBP f
 
 -- | Turn a @a -> b@ function parameterized on @r@ into a @'Grad' m a@.
 bpGradSample
-    :: (Backprop a, Backprop b, Applicative m)
+    :: (Backprop a, Backprop b)
     => (forall s. Reifies s W => r -> BVar s a -> BVar s b)
-    -> Grad m r a
+    -> Grad q r a
 bpGradSample f = pureGrad $ \r -> gradBP (f r)

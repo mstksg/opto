@@ -30,7 +30,7 @@
 module Numeric.Opto.Core (
   -- * Optimizer type
     Diff, Grad, Opto(..)
-  , mapSample, mapOpto
+  , mapSample
   , fromCopying, fromStateless
   -- * Making Grads
   , pureGrad
@@ -39,8 +39,6 @@ module Numeric.Opto.Core (
 
 import           Data.Kind
 import           Data.Mutable
-import           Data.Mutable.Class
-import           Data.Type.Equality
 import           Numeric.Opto.Update
 
 -- | Useful type synonym to indicate /differences/ in @a@ and rates of
@@ -49,7 +47,7 @@ type Diff     a = a
 
 -- | Gradient function to compute a direction of steepest /ascent/ in @a@,
 -- with respect to an @r@ sample.
-type Grad m r a = r -> a -> m (Diff a)
+type Grad q r a = forall m. (PrimMonad m, PrimState m ~ q) => r -> a -> m (Diff a)
 
 -- | An @'Opto' m r a@ represents a (potentially stateful) in-place
 -- optimizer for values of type @a@ that can be run in a monad @m@.  Each
@@ -60,27 +58,28 @@ type Grad m r a = r -> a -> m (Diff a)
 --
 -- An @'Opto' m v () a@ is a "non-sampling" optimizer, where each
 -- optimization step doesn't require any external input.
-data Opto :: (Type -> Type) -> Type -> Type -> Type where
-    MkOpto :: forall s m r a c. (LinearInPlace (PrimState m) c a, Mutable (PrimState m) s)
+data Opto :: Type -> Type -> Type -> Type where
+    MkOpto :: forall s q r a c. (LinearInPlace q c a, Mutable q s)
            => { oInit   :: !s
-              , oUpdate :: !( Ref (PrimState m) s
+              , oUpdate :: !( forall m. (PrimMonad m, PrimState m ~ q)
+                           => Ref q s
                            -> r
                            -> a
                            -> m (c, Diff a)
                             )
               }
-           -> Opto m r a
+           -> Opto q r a
 
--- | Map over the inner monad of an 'Opto' by providing a natural
--- transformation, and also a method to "convert" the references.
-mapOpto
-    :: forall m n r a c q. (LinearInPlace q c a, PrimState m ~ q, PrimState n ~ q)
-    => (forall x. m x -> n x)
-    -> Opto m r a
-    -> Opto n r a
-mapOpto f (MkOpto o (u :: Ref q s -> r -> b -> m (d, b))) = undefined
-    -- reMutable @m @n @s f $ case linearWit @a @c @d of
-    --   Refl -> MkOpto @s @n @r @a @d o $ \r i x -> f (u (g r) i x)
+-- -- | Map over the inner monad of an 'Opto' by providing a natural
+-- -- transformation, and also a method to "convert" the references.
+-- mapOpto = undefined
+--     -- :: forall m n r a c q. (LinearInPlace q c a, PrimState m ~ q, PrimState n ~ q)
+--     -- => (forall x. m x -> n x)
+--     -- -> Opto q r a
+--     -- -> Opto q r a
+-- -- mapOpto f (MkOpto o (u :: Ref q s -> r -> b -> m (d, b))) = undefined
+--     -- reMutable @m @n @s f $ case linearWit @a @c @d of
+--     --   Refl -> MkOpto @s @n @r @a @d o $ \r i x -> f (u (g r) i x)
 
 -- | (Contravariantly) map over the type of the external sample input of an
 -- 'Opto'.
@@ -102,10 +101,10 @@ mapSample f MkOpto{..} = MkOpto
 -- The state is updated in a "copying" manner (by generating new values
 -- purely), without any in-place mutation.
 fromCopying
-    :: (LinearInPlace q c a, Mutable q s, PrimMonad m, PrimState m ~ q)
+    :: (LinearInPlace q c a, Mutable q s)
     => s                                    -- ^ Initial state
-    -> (r -> a -> s -> m (c, Diff a, s))    -- ^ State-updating function
-    -> Opto m r a
+    -> (forall m. (PrimMonad m, PrimState m ~ q) => r -> a -> s -> m (c, Diff a, s))    -- ^ State-updating function
+    -> Opto q r a
 fromCopying s0 update = MkOpto
     { oInit    = s0
     , oUpdate = \rS r x -> do
@@ -118,9 +117,9 @@ fromCopying s0 update = MkOpto
 -- The function takes the external @r@ input and the current value @a@ and
 -- returns a step to move @a@ in and a factor to scale that step via.
 fromStateless
-    :: (LinearInPlace q c a, PrimState m ~ q)
-    => (r -> a -> m (c, Diff a))
-    -> Opto m r a
+    :: LinearInPlace q c a
+    => (forall m. (PrimMonad m, PrimState m ~ q) => r -> a -> m (c, Diff a))
+    -> Opto q r a
 fromStateless update = MkOpto
     { oInit   = ()
     , oUpdate = \_ -> update
@@ -128,22 +127,20 @@ fromStateless update = MkOpto
 
 -- | Create a bona-fide 'Grad' from a pure (non-monadic) sampling gradient function.
 pureGrad
-    :: Applicative m
-    => (r -> a -> Diff a)
-    -> Grad m r a
+    :: (r -> a -> Diff a)
+    -> Grad q r a
 pureGrad f r = pure . f r
 
 -- | Create a 'Grad' from a monadic non-sampling gradient function, which
 -- ignores the external sample input @r@.
 nonSampling
-    :: (a -> m (Diff a))
-    -> Grad m r a
+    :: (forall m. (PrimMonad m, PrimState m ~ q) => a -> m (Diff a))
+    -> Grad q r a
 nonSampling f _ = f
 
 -- | Create a 'Grad' from a pure (non-monadic) non-sampling gradient
 -- function, which ignores the external sample input @r@.
 pureNonSampling
-    :: Applicative m
-    => (a -> Diff a)
-    -> Grad m r a
+    :: (a -> Diff a)
+    -> Grad q r a
 pureNonSampling f _ = pure . f

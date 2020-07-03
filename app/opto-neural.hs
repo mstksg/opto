@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
@@ -160,7 +161,7 @@ main = MWC.withSystemRandom $ \g -> do
     putStrLn "Loaded data."
     net0 <- MWC.uniformR (-0.5, 0.5) g
 
-    let o :: PrimMonad m => Opto m (R 784, R 10) Net
+    let o :: Opto (PrimState IO) (R 784, R 10) Net
         o = adam def $
               bpGradSample $ \(x, y) -> netErr (constVar x) (constVar y)
 

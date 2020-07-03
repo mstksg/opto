@@ -151,11 +151,11 @@ data SOOptimizer :: (Type -> Type) -> (Type -> Type) -> Type -> Type -> Type whe
 -- | Run an 'SOOptimizer' concurrency strategy, transforming a sample
 -- source.
 runSOOptimizer
-    :: (MonadIO m, PrimMonad m)
+    :: (MonadIO m, PrimMonad m, PrimState m ~ q)
     => SOOptimizer m n i a
     -> RunOpts m a
     -> a
-    -> Opto n i a
+    -> Opto q i a
     -> ConduitT () i m ()
     -> ConduitT () a m ()
 runSOOptimizer = \case
@@ -178,13 +178,13 @@ instance (MonadIO m, Default b) => Default (SimpleOpts m i a b) where
 -- generating the sample queue and supplying all callbacks based on the
 -- 'SimpleOpts'.
 simpleRunner
-    :: forall m t a b n. (MonadIO m, PrimMonad m, NFData a, MonoFoldable t)
+    :: forall m t a b n q. (MonadIO m, PrimMonad m, NFData a, MonoFoldable t, PrimState m ~ q)
     => SimpleOpts m (Element t) a b     -- ^ Options
     -> t                                -- ^ Collection of samples
     -> SOOptimizer m n (Element t) a    -- ^ Choice of optimizer concurrency strategy
     -> RunOpts m a                      -- ^ Runner options
     -> a                                -- ^ Initial value
-    -> Opto n (Element t) a             -- ^ Optimizer
+    -> Opto q (Element t) a             -- ^ Optimizer
     -> MWC.Gen (PrimState m)            -- ^ Random generator
     -> m b
 simpleRunner SO{..} samps soo ro x0 o g = do

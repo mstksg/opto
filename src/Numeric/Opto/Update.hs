@@ -50,7 +50,6 @@ import           Data.Foldable
 import           Data.Function
 import           Data.Maybe
 import           Data.Mutable
-import           Data.Mutable.Instances
 import           Data.Semigroup
 import           Data.Vinyl hiding                   ((:~:))
 import           GHC.Generics                        (Generic)
