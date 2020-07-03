@@ -1,6 +1,7 @@
 {-# LANGUAGE ApplicativeDo       #-}
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -37,7 +38,7 @@ import           Numeric.Opto.Update
 -- | Steepest descent, acording to some learning rate.  The simplest
 -- optimizer.
 steepestDescent
-    :: LinearInPlace m c a
+    :: (LinearInPlace q c a, PrimState m ~ q, Monad m)
     => c                          -- ^ learning rate
     -> Grad m r a                 -- ^ gradient
     -> Opto m r a
@@ -56,7 +57,11 @@ instance Fractional c => Default (Momentum c) where
 
 -- | Steepest descent with momentum. (Qian, 1999)
 momentum
-    :: forall m r a c. LinearInPlace m c a
+    :: forall m r a c q.
+     ( LinearInPlace q c a
+     , PrimMonad m
+     , PrimState m ~ q
+     )
     => Momentum c        -- ^ configuration
     -> c                 -- ^ learning rate
     -> Grad m r a        -- ^ gradient
@@ -82,7 +87,11 @@ instance Fractional c => Default (Nesterov c) where
 
 -- | Nesterov accelerated gradient (NAG) (Nesterov, 1983)
 nesterov
-    :: forall m r a c. LinearInPlace m c a
+    :: forall m r a c q.
+     ( LinearInPlace q c a
+     , PrimMonad m
+     , PrimState m ~ q
+     )
     => Nesterov c       -- ^ configuration
     -> c                -- ^ learning rate
     -> Grad m r a       -- ^ gradient
@@ -114,10 +123,12 @@ instance Fractional c => Default (Adagrad c) where
 -- | Adaptive Gradient (Duchu, Hazan, Singer, 2011).  Note that if the
 -- state is not reset periodically, updates tend to zero fairly quickly.
 adagrad
-    :: forall m r a c.
-     ( LinearInPlace m c a
+    :: forall m r a c q.
+     ( LinearInPlace q c a
      , Floating a
      , Real c
+     , PrimMonad m
+     , PrimState m ~ q
      )
     => Adagrad c
     -> Grad m r a
@@ -151,10 +162,12 @@ instance Fractional c => Default (Adadelta c) where
 -- | The Adadelta extension of Adagrad (Zeiler, 2012) that mitigates the
 -- decreasing learning rate.
 adadelta
-    :: forall m r a c.
-     ( LinearInPlace m c a
+    :: forall m r a c q.
+     ( LinearInPlace q c a
      , Floating a
      , Real c
+     , PrimMonad m
+     , PrimState m ~ q
      )
     => Adadelta c
     -> Grad m r a
@@ -196,10 +209,12 @@ instance Fractional c => Default (RMSProp c) where
 
 -- | RMSProp, as described by Geoff Hinton.
 rmsProp
-    :: forall m r a c.
-     ( LinearInPlace m c a
+    :: forall m r a c q.
+     ( LinearInPlace q c a
      , Floating a
      , Real c
+     , PrimState m ~ q
+     , PrimMonad m
      )
     => RMSProp c
     -> Grad m r a
@@ -237,11 +252,13 @@ instance Fractional c => Default (Adam c) where
 
 -- | Adaptive Moment Estimation (Kingma, Ba, 2015)
 adam
-    :: forall m r a c.
+    :: forall m r a c q.
      ( RealFloat c
      , Floating a
-     , LinearInPlace m c a
-     , Mutable m c
+     , LinearInPlace q c a
+     , Mutable q c
+     , PrimMonad m
+     , PrimState m ~ q
      )
     => Adam c               -- ^ configuration
     -> Grad m r a           -- ^ gradient
@@ -282,11 +299,13 @@ instance Fractional c => Default (AdaMax c) where
 
 -- | Adam variation (Kingma and Ba, 2015)
 adaMax
-    :: forall m r a c.
+    :: forall m r a c q.
      ( RealFloat c
      , Metric c a
-     , LinearInPlace m c a
-     , Mutable m c
+     , LinearInPlace q c a
+     , Mutable q c
+     , PrimMonad m
+     , PrimState m ~ q
      )
     => AdaMax c             -- ^ configuration
     -> Grad m r a           -- ^ gradient

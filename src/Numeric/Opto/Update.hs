@@ -201,15 +201,15 @@ gQuadrance = getSum . gfoldMap @(Metric c) (Sum . quadrance)
 -- Inspired by the BLAS Level 1 API.  A @'LinearInPlace' m v c a@ means
 -- that @v@ is a mutable reference to an @a@ that can be updated as an
 -- action in monad @m@.
-class (Mutable m a, Linear c a) => LinearInPlace m c a where
+class (Mutable s a, Linear c a) => LinearInPlace s c a where
     -- | Add a value in-place.
-    (.+.=) :: Ref m a -> a -> m ()
+    (.+.=) :: (PrimMonad m, PrimState m ~ s) => Ref s a -> a -> m ()
 
     -- | Scale a value in-place.
-    (.*=)  :: Ref m a -> c -> m ()
+    (.*=)  :: (PrimMonad m, PrimState m ~ s) => Ref s a -> c -> m ()
 
     -- | Add a scaled value in-place.
-    (.*+=) :: Ref m a -> (c, a) -> m ()
+    (.*+=) :: (PrimMonad m, PrimState m ~ s) => Ref s a -> (c, a) -> m ()
 
     r .+.= x      = modifyRef' r (.+. x)
     r  .*= c      = modifyRef' r (c .*)
@@ -221,7 +221,7 @@ class (Mutable m a, Linear c a) => LinearInPlace m c a where
 
 -- | Given some starting reference @v@, add every item in a foldable
 -- container into that reference in-place.
-sumLinearInPlace :: (LinearInPlace m c a, Foldable t) => Ref m a -> t a -> m ()
+sumLinearInPlace :: (LinearInPlace s c a, Foldable t, PrimMonad m, PrimState m ~ s) => Ref s a -> t a -> m ()
 sumLinearInPlace v = mapM_ (v .+.=)
 
 -- | Newtype wrapper that gives "simple" 'Linear', 'Metric', and
@@ -232,7 +232,7 @@ sumLinearInPlace v = mapM_ (v .+.=)
 -- @
 -- deriving via (LinearNum Double) instance Linear Double Double
 -- deriving via (LinearNum Double) instance Metric Double Double
--- instance Ref m Double v => LinearInPlace m v Double Double
+-- instance Ref s Double v => LinearInPlace s v Double Double
 -- @
 newtype LinearNum a = LinearNum { getLinearNum :: a }
   deriving ( Show, Eq, Ord
@@ -269,12 +269,12 @@ deriving via (LinearNum Float)       instance Metric Float Float
 deriving via (LinearNum Double)      instance Metric Double Double
 deriving via (LinearNum (Complex a)) instance RealFloat a => Metric (Complex a) (Complex a)
 
-instance Mutable m Int                        => LinearInPlace m Int Int
-instance Mutable m Integer                    => LinearInPlace m Integer Integer
-instance Mutable m Rational                   => LinearInPlace m Rational Rational
-instance Mutable m Float                      => LinearInPlace m Float Float
-instance Mutable m Double                     => LinearInPlace m Double Double
-instance (Mutable m (Complex a), RealFloat a) => LinearInPlace m (Complex a) (Complex a)
+instance Mutable s Int                        => LinearInPlace s Int Int
+instance Mutable s Integer                    => LinearInPlace s Integer Integer
+instance Mutable s Rational                   => LinearInPlace s Rational Rational
+instance Mutable s Float                      => LinearInPlace s Float Float
+instance Mutable s Double                     => LinearInPlace s Double Double
+instance (Mutable s (Complex a), RealFloat a) => LinearInPlace s (Complex a) (Complex a)
 
 instance (Num a, VG.Vector v a, KnownNat n) => Linear a (SVG.Vector v n a) where
     (.+.)    = (+)
@@ -288,8 +288,8 @@ instance (Floating a, Ord a, VG.Vector v a, KnownNat n) => Metric a (SVG.Vector 
     norm_1    = SVG.sum . abs
     quadrance = SVG.sum . (^ (2 :: Int))
 
-instance (PrimMonad m, PrimState m ~ s, Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
-      => LinearInPlace m a (SVG.Vector v n a) where
+instance (Num a, mv ~ VG.Mutable v, VG.Vector v a, KnownNat n)
+      => LinearInPlace s a (SVG.Vector v n a) where
     r .+.= xs = flip SVG.imapM_ xs $ \i x ->
       SVGM.modify r (+ x) i
     r .*= c = forM_ finites $ \i ->
@@ -308,7 +308,7 @@ instance KnownNat n => Metric Double (H.R n) where
     norm_1    = H.norm_1
     norm_2    = H.norm_2
     quadrance = (**2) . H.norm_2
-instance (PrimMonad m, KnownNat n) => LinearInPlace m Double (H.R n) where
+instance KnownNat n => LinearInPlace s Double (H.R n) where
     MR v .+.= x = v .+.= H.rVec x
     MR v  .*= c = v  .*= c
     MR v .*+= (c, x) = v .*+= (c, H.rVec x)
@@ -324,7 +324,7 @@ instance (KnownNat n, KnownNat m) => Metric Double (H.L n m) where
     norm_1    = UH.sumElements . H.extract
     norm_2    = UH.norm_2 . UH.flatten . H.extract
     quadrance = (**2) . norm_2
-instance (PrimMonad m, KnownNat n, KnownNat k) => LinearInPlace m Double (H.L n k) where
+instance (KnownNat n, KnownNat k) => LinearInPlace s Double (H.L n k) where
     ML v .+.= x = v .+.= H.lVec x
     ML v  .*= c = v  .*= c
     ML v .*+= (c, x) = v .*+= (c, H.lVec x)
@@ -339,10 +339,10 @@ instance (Metric c a, Metric c b, Metric c d, Ord c, Floating c) => Metric c (a,
 instance (Metric c a, Metric c b, Metric c d, Metric c e, Ord c, Floating c) => Metric c (a, b, d, e)
 instance (Metric c a, Metric c b, Metric c d, Metric c e, Metric c f, Ord c, Floating c) => Metric c (a, b, d, e, f)
 
-instance (Mutable m (a, b), Linear c a, Linear c b) => LinearInPlace m c (a, b)
-instance (Mutable m (a, b, d), Linear c a, Linear c b, Linear c d) => LinearInPlace m c (a, b, d)
-instance (Mutable m (a, b, d, e), Linear c a, Linear c b, Linear c d, Linear c e) => LinearInPlace m c (a, b, d, e)
-instance (Mutable m (a, b, d, e, f), Linear c a, Linear c b, Linear c d, Linear c e, Linear c f) => LinearInPlace m c (a, b, d, e, f)
+instance (Mutable s (a, b), Linear c a, Linear c b) => LinearInPlace s c (a, b)
+instance (Mutable s (a, b, d), Linear c a, Linear c b, Linear c d) => LinearInPlace s c (a, b, d)
+instance (Mutable s (a, b, d, e), Linear c a, Linear c b, Linear c d, Linear c e) => LinearInPlace s c (a, b, d, e)
+instance (Mutable s (a, b, d, e, f), Linear c a, Linear c b, Linear c d, Linear c e, Linear c f) => LinearInPlace s c (a, b, d, e, f)
 
 instance Linear c (f a) => Linear c (Rec f '[a]) where
     x :& RNil .+. y :& RNil = (x .+. y) :& RNil
@@ -370,15 +370,15 @@ instance (Floating c, Ord c, Metric c (f a), Metric c (Rec f (b ': bs))) => Metr
     norm_2 = sqrt . quadrance
     quadrance (x :& xs) = quadrance x + quadrance xs
 
-instance LinearInPlace m c (f a) => LinearInPlace m c (Rec f '[a]) where
+instance LinearInPlace s c (f a) => LinearInPlace s c (Rec f '[a]) where
     (RecRef v :& RNil) .+.= (x :& RNil)    = v .+.= x
     (RecRef v :& RNil) .*=  c              = v .*=  c
     (RecRef v :& RNil) .*+= (c, x :& RNil) = v .*+= (c, x)
 
-instance ( LinearInPlace m c (f a)
-         , LinearInPlace m c (Rec f (b ': bs))
+instance ( LinearInPlace s c (f a)
+         , LinearInPlace s c (Rec f (b ': bs))
          )
-        => LinearInPlace m c (Rec f (a ': b ': bs)) where
+        => LinearInPlace s c (Rec f (a ': b ': bs)) where
     (RecRef v :& vs) .+.= (x :& xs)    = do v .+.= x; vs .+.= xs
     (RecRef v :& vs) .*=  c            = do v .*=  c; vs .*=  c
     (RecRef v :& vs) .*+= (c, x :& xs) = do v .*+= (c, x); vs .*+= (c, xs)

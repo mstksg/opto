@@ -151,7 +151,7 @@ data SOOptimizer :: (Type -> Type) -> (Type -> Type) -> Type -> Type -> Type whe
 -- | Run an 'SOOptimizer' concurrency strategy, transforming a sample
 -- source.
 runSOOptimizer
-    :: MonadIO m
+    :: (MonadIO m, PrimMonad m)
     => SOOptimizer m n i a
     -> RunOpts m a
     -> a

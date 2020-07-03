@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -60,9 +61,9 @@ type Grad m r a = r -> a -> m (Diff a)
 -- An @'Opto' m v () a@ is a "non-sampling" optimizer, where each
 -- optimization step doesn't require any external input.
 data Opto :: (Type -> Type) -> Type -> Type -> Type where
-    MkOpto :: forall s m r a c. (LinearInPlace m c a, Mutable m s)
+    MkOpto :: forall s m r a c. (LinearInPlace (PrimState m) c a, Mutable (PrimState m) s)
            => { oInit   :: !s
-              , oUpdate :: !( Ref m s
+              , oUpdate :: !( Ref (PrimState m) s
                            -> r
                            -> a
                            -> m (c, Diff a)
@@ -73,14 +74,13 @@ data Opto :: (Type -> Type) -> Type -> Type -> Type where
 -- | Map over the inner monad of an 'Opto' by providing a natural
 -- transformation, and also a method to "convert" the references.
 mapOpto
-    :: forall m n r a c. (LinearInPlace n c a)
+    :: forall m n r a c q. (LinearInPlace q c a, PrimState m ~ q, PrimState n ~ q)
     => (forall x. m x -> n x)
-    -> (forall x. Ref n x -> Ref m x)
     -> Opto m r a
     -> Opto n r a
-mapOpto f g (MkOpto o (u :: Ref m s -> r -> b -> m (d, b))) =
-    reMutable @m @n @s f $ case linearWit @a @c @d of
-      Refl -> MkOpto @s @n @r @a @d o $ \r i x -> f (u (g r) i x)
+mapOpto f (MkOpto o (u :: Ref q s -> r -> b -> m (d, b))) = undefined
+    -- reMutable @m @n @s f $ case linearWit @a @c @d of
+    --   Refl -> MkOpto @s @n @r @a @d o $ \r i x -> f (u (g r) i x)
 
 -- | (Contravariantly) map over the type of the external sample input of an
 -- 'Opto'.
@@ -102,7 +102,7 @@ mapSample f MkOpto{..} = MkOpto
 -- The state is updated in a "copying" manner (by generating new values
 -- purely), without any in-place mutation.
 fromCopying
-    :: (LinearInPlace m c a, Mutable m s)
+    :: (LinearInPlace q c a, Mutable q s, PrimMonad m, PrimState m ~ q)
     => s                                    -- ^ Initial state
     -> (r -> a -> s -> m (c, Diff a, s))    -- ^ State-updating function
     -> Opto m r a
@@ -118,12 +118,12 @@ fromCopying s0 update = MkOpto
 -- The function takes the external @r@ input and the current value @a@ and
 -- returns a step to move @a@ in and a factor to scale that step via.
 fromStateless
-    :: (LinearInPlace m c a)
+    :: (LinearInPlace q c a, PrimState m ~ q)
     => (r -> a -> m (c, Diff a))
     -> Opto m r a
 fromStateless update = MkOpto
     { oInit   = ()
-    , oUpdate = \(~()) -> update
+    , oUpdate = \_ -> update
     }
 
 -- | Create a bona-fide 'Grad' from a pure (non-monadic) sampling gradient function.

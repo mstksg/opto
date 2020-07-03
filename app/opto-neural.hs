@@ -102,8 +102,8 @@ data Net = N { _weights1 :: !(L 250 784)
 makeLenses ''Net
 
 instance Linear Double Net
-instance PrimMonad m => Mutable m Net
-instance PrimMonad m => LinearInPlace m Double Net
+instance Mutable q Net
+instance LinearInPlace q Double Net
 
 logistic :: Floating a => a -> a
 logistic x = 1 / (1 + exp (-x))

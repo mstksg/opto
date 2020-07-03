@@ -125,7 +125,7 @@ instance Contravariant (RunOpts m) where
       }
 
 instance Invariant (RunOpts m) where
-    invmap _ g = contramap g
+    invmap _ = contramap
 
 instance Functor m => Invariant (ParallelOpts m) where
     invmap f g po = po
@@ -155,7 +155,7 @@ hoistParallelOpts f po = po
 -- new sample.  When the action produces 'Nothing', the running immediately
 -- terminates even if the stop condition has not yet been met.
 opto
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a      -- ^ Runner options
     -> m (Maybe r)      -- ^ Produce new sample.
     -> a                -- ^ Value to optimize
@@ -167,7 +167,7 @@ opto ro sampler x0 o = opto_ ro sampler x0 o const
 -- | Run a non-sampling optimizer on some input until the stop condition is
 -- met.
 optoNonSampling
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a      -- ^ Runner options
     -> a                -- ^ Value to optimize
     -> Opto m () a    -- ^ Non-sampling optimizer
@@ -178,7 +178,7 @@ optoNonSampling ro = opto ro (pure (Just ()))
 -- | A version of 'opto' that also returns an updated optimizer state that
 -- can be resumed.
 opto'
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a      -- ^ Runner options
     -> m (Maybe r)      -- ^ Produce new sample.
     -> a                -- ^ Value to optimize
@@ -190,7 +190,7 @@ opto' ro sampler x0 o = opto_ ro sampler x0 o (liftA2 (,))
 -- | A version of 'optoNonSampling' that also returns an updated optimizer state that
 -- can be resumed.
 optoNonSampling'
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a      -- ^ Runner options
     -> a                -- ^ Value to optimize
     -> Opto m () a    -- ^ Non-sampling optimizer
@@ -199,7 +199,7 @@ optoNonSampling' ro = opto' ro (pure (Just ()))
 {-# INLINE optoNonSampling' #-}
 
 opto_
-    :: forall m r a q. Monad m
+    :: forall m r a q. PrimMonad m
     => RunOpts m a
     -> m (Maybe r)
     -> a
@@ -208,12 +208,12 @@ opto_
     -> m q
 opto_ RO{..} sampler x0 MkOpto{..} f = do
     rS <- thawRef oInit
-    rX <- thawRef @m @a x0
+    rX <- thawRef @(PrimState m) @a x0
     optoLoop OL
       { olLimit       = roLimit
       , olBatch       = roBatch
       , olReportFreq  = roFreq
-      , olInitialize  = thawRef @m @a
+      , olInitialize  = thawRef @(PrimState m) @a
       , olUpdate      = (.*+=)
       , olRead        = freezeRef
       , olVar         = rX
@@ -229,10 +229,10 @@ data OptoLoop m r a c = OL
     { olLimit       :: Maybe Int
     , olBatch       :: Int
     , olReportFreq  :: Maybe Int
-    , olInitialize  :: a -> m (Ref m a)
-    , olUpdate      :: Ref m a -> (c, a) -> m ()
-    , olRead        :: Ref m a -> m a
-    , olVar         :: Ref m a
+    , olInitialize  :: a -> m (Ref (PrimState m) a)
+    , olUpdate      :: Ref (PrimState m) a -> (c, a) -> m ()
+    , olRead        :: Ref (PrimState m) a -> m a
+    , olVar         :: Ref (PrimState m) a
     , olSample      :: m (Maybe r)
     , olUpdateState :: r -> a -> m (c, a)
     , olStopCond    :: Diff a -> a -> m Bool
@@ -291,7 +291,7 @@ optoLoop OL{..} = go 0
 -- Note that this emits /every single/ updated version of the value, but
 -- still only runs 'roReport' at the frequency of 'roFreq'.
 optoConduit
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a                  -- ^ Runner options
     -> a                            -- ^ Value to optimize
     -> Opto (ConduitT r a m) r a  -- ^ Optimizer
@@ -302,7 +302,7 @@ optoConduit ro x0 = void . optoConduit' ro x0
 -- | A version of 'optoConduit' that also returns an updated optimizer state that
 -- can be resumed.
 optoConduit'
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a                  -- ^ Runner options
     -> a                            -- ^ Value to optimize
     -> Opto (ConduitT r a m) r a  -- ^ Optimizer
@@ -316,7 +316,7 @@ optoConduit' ro x0 o = opto_ ro' C.await x0 o (const id)
 -- | Convenient wrapper over 'opto' to allow consumption over a list of
 -- samples.
 optoFold
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a                  -- ^ Runner options
     -> a                            -- ^ Value to optimize
     -> Opto (StateT [r] m) r a    -- ^ Optimizer
@@ -328,7 +328,7 @@ optoFold ro x0 o = runStateT (opto (hoistRunOpts lift ro) sampleState x0 o)
 -- | A version of 'optoFold'' that also returns an updated optimizer state that
 -- can be resumed.
 optoFold'
-    :: Monad m
+    :: PrimMonad m
     => RunOpts m a                  -- ^ Runner options
     -> a                            -- ^ Value to optimize
     -> Opto (StateT [r] m) r a    -- ^ Optimizer
@@ -366,14 +366,14 @@ sampleState = state $ maybe (Nothing, []) (first Just) . uncons
 -- given to the stop condition will be used as the final result, ignoring
 -- all other thread pools.
 optoPar
-    :: forall m r a. MonadUnliftIO m
+    :: (MonadUnliftIO m, PrimMonad m)
     => RunOpts m a          -- ^ Runner options
     -> ParallelOpts m a     -- ^ Parallelization options
     -> m (Maybe r)          -- ^ Produce new sample (should be thread-safe)
     -> a                    -- ^ Value to optimize
     -> Opto m r a         -- ^ Optimizer
     -> m a
-optoPar ro po sampler x0 o = optoPar_ ro po x0 $ \hitStop lim x -> do
+optoPar ro po sampler x0 o = optoPar_ ro po x0 $ \hitStop lim x ->
     if lim > 0
       then Just <$> do
         let ro' = ro
@@ -394,7 +394,7 @@ optoPar ro po sampler x0 o = optoPar_ ro po x0 $ \hitStop lim x -> do
 -- See 'optoPar' for a detailed description of how parallel optimization is
 -- implemented.
 optoParNonSampling
-    :: MonadUnliftIO m
+    :: (MonadUnliftIO m, PrimMonad m)
     => RunOpts m a          -- ^ Runner options
     -> ParallelOpts m a     -- ^ Parallelization options
     -> a                    -- ^ Value to optimize
@@ -407,7 +407,7 @@ optoParNonSampling ro po = optoPar ro po (pure (Just ()))
 -- entire sample pool /before/ beginning parallel optimization.  This can
 -- be useful if the sampling is faster in batch amounts.
 optoParChunk
-    :: forall m r a. MonadUnliftIO m
+    :: (MonadUnliftIO m, PrimMonad m)
     => RunOpts m a                  -- ^ Runner options
     -> ParallelOpts m a             -- ^ Parallelization options
     -> (Int -> m [r])               -- ^ Batched fetch of samples. Input
@@ -435,7 +435,7 @@ optoParChunk ro po sampler x0 o = optoPar_ ro po x0 $ \hitStop lim x -> do
 {-# INLINE optoParChunk #-}
 
 optoPar_
-    :: forall m a. MonadUnliftIO m
+    :: MonadUnliftIO m
     => RunOpts m a
     -> ParallelOpts m a
     -> a
@@ -511,7 +511,7 @@ optoParLoop OPL{..} = go 0 oplInitial
 --
 -- A value is emitted after every thread recombination/call of 'poCombine'.
 optoConduitPar
-    :: forall m r a. MonadUnliftIO m
+    :: (MonadUnliftIO m, PrimMonad m)
     => RunOpts m a
     -> ParallelOpts m a
     -> a
@@ -535,7 +535,7 @@ optoConduitPar ro po x0 o = optoConduitPar_ ro po $ \sem inQueue outVar -> do
 -- parallel optimization.  This can be useful if the source can produce
 -- values faster in batch amounts.
 optoConduitParChunk
-    :: forall m r a. MonadUnliftIO m
+    :: (MonadUnliftIO m, PrimMonad m)
     => RunOpts m a
     -> ParallelOpts m a
     -> a
@@ -555,7 +555,7 @@ optoConduitParChunk ro po x0 o = optoConduitPar_ ro po $ \sem inQueue outVar -> 
 {-# INLINE optoConduitParChunk #-}
 
 optoConduitPar_
-    :: forall m r a. MonadUnliftIO m
+    :: MonadUnliftIO m
     => RunOpts m a
     -> ParallelOpts m a
     -> (m () -> TBMQueue r -> MVar (Bool, a) -> m a)

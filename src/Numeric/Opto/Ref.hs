@@ -48,8 +48,8 @@ import qualified Numeric.LinearAlgebra.Devel         as HU
 import qualified Numeric.LinearAlgebra.Static        as H
 import qualified Numeric.LinearAlgebra.Static.Vector as H
 
-instance (PrimMonad m, VG.Vector v a) => Mutable m (SVG.Vector v n a) where
-    type Ref m (SVG.Vector v n a) = SVG.MVector (VG.Mutable v) n (PrimState m) a
+instance VG.Vector v a => Mutable s (SVG.Vector v n a) where
+    type Ref s (SVG.Vector v n a) = SVG.MVector (VG.Mutable v) n s a
     thawRef         = SVG.thaw
     freezeRef       = SVG.freeze
     copyRef         = SVG.copy
@@ -58,8 +58,8 @@ instance (PrimMonad m, VG.Vector v a) => Mutable m (SVG.Vector v n a) where
     unsafeThawRef   = SVG.unsafeThaw
     unsafeFreezeRef = SVG.unsafeFreeze
 
-instance (PrimMonad m, HU.Element a) => Mutable m (HU.Matrix a) where
-    type Ref m (HU.Matrix a) = HU.STMatrix (PrimState m) a
+instance HU.Element a => Mutable s (HU.Matrix a) where
+    type Ref s (HU.Matrix a) = HU.STMatrix s a
     thawRef x   = stToPrim $ HU.thawMatrix x
     freezeRef v = stToPrim $ HU.freezeMatrix v
     copyRef v x = stToPrim $ HU.setMatrix v 0 0 x
@@ -72,8 +72,8 @@ instance (PrimMonad m, HU.Element a) => Mutable m (HU.Matrix a) where
 -- 'H.C'.
 newtype MR s n a = MR { getMR :: SVG.MVector VS.MVector n s a }
 
-instance (PrimMonad m, KnownNat n) => Mutable m (H.R n) where
-    type Ref m (H.R n) = MR (PrimState m) n Double
+instance KnownNat n => Mutable s (H.R n) where
+    type Ref s (H.R n) = MR s n Double
 
     thawRef = fmap MR . thawRef . H.rVec
     freezeRef = fmap H.vecR . freezeRef . getMR
@@ -83,8 +83,8 @@ instance (PrimMonad m, KnownNat n) => Mutable m (H.R n) where
     unsafeThawRef   = undefined
     unsafeFreezeRef = undefined
 
-instance (PrimMonad m, KnownNat n) => Mutable m (H.C n) where
-    type Ref m (H.C n) = MR (PrimState m) n (Complex Double)
+instance KnownNat n => Mutable s (H.C n) where
+    type Ref s (H.C n) = MR s n (Complex Double)
 
     thawRef = fmap MR . thawRef . H.cVec
     freezeRef = fmap H.vecC . freezeRef . getMR
@@ -98,8 +98,8 @@ instance (PrimMonad m, KnownNat n) => Mutable m (H.C n) where
 -- 'H.M'.
 newtype ML s n k a = ML { getML :: SVG.MVector VS.MVector (n * k) s a }
 
-instance (PrimMonad m, KnownNat n, KnownNat k) => Mutable m (H.L n k) where
-    type Ref m (H.L n k) = ML (PrimState m) n k Double
+instance (KnownNat n, KnownNat k) => Mutable s (H.L n k) where
+    type Ref s (H.L n k) = ML s n k Double
 
     thawRef = fmap ML . thawRef . H.lVec
     freezeRef = fmap H.vecL . freezeRef . getML
@@ -109,8 +109,8 @@ instance (PrimMonad m, KnownNat n, KnownNat k) => Mutable m (H.L n k) where
     unsafeThawRef   = undefined
     unsafeFreezeRef = undefined
 
-instance (PrimMonad m, KnownNat n, KnownNat k) => Mutable m (H.M n k) where
-    type Ref m (H.M n k) = ML (PrimState m) n k (Complex Double)
+instance (KnownNat n, KnownNat k) => Mutable s (H.M n k) where
+    type Ref s (H.M n k) = ML s n k (Complex Double)
 
     thawRef = fmap ML . thawRef . H.mVec
     freezeRef = fmap H.vecM . freezeRef . getML
