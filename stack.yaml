@@ -47,8 +47,7 @@ extra-deps:
 - backprop-0.2.6.3
 - generic-lens-core-2.0.0.0
 - generic-lens-2.0.0.0
-- github: mstksg/mutable
-  commit: 0b72137a7733cd54aa21e35c928960c8c909d215
+- mutable-0.2.0.0
 
 
 ghc-options:

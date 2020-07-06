@@ -46,6 +46,13 @@ packages:
       sha256: 46ba160f0efc9c805eac6666f298f48dda899834b68c860f63641ce1f82db737
   original:
     hackage: generic-lens-2.0.0.0
+- completed:
+    hackage: mutable-0.2.0.0@sha256:7f94a16c9e260815d2a678ad7333f7f581cb41b6a349c35c3f98661ecb3a9f3c,2600
+    pantry-tree:
+      size: 713
+      sha256: 6ffaab55ef56d195ecab29aa6df580829fe0d905af0502c9aeb418baae013f77
+  original:
+    hackage: mutable-0.2.0.0
 snapshots:
 - completed:
     size: 458669
